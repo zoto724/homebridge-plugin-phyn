@@ -136,7 +136,7 @@ export class PhynApi {
       method,
       url: `${PHYN_API_BASE}${path}`,
       headers: {
-        Authorization: `Bearer ${this.accessToken}`,
+        Authorization: `Bearer ${this.idToken}`,
         'x-api-key': this.apiKey(),
         'Content-Type': 'application/json',
       },
