@@ -21,7 +21,7 @@ export class PPAccessory {
       .setCharacteristic(Characteristic.Manufacturer, 'Phyn')
       .setCharacteristic(Characteristic.Model, device.product_code)
       .setCharacteristic(Characteristic.SerialNumber, device.serial_number)
-      .setCharacteristic(Characteristic.FirmwareRevision, device.fw_version ?? '');
+      .setCharacteristic(Characteristic.FirmwareRevision, String(device.fw_version ?? ''));
 
     // Valve service
     const valveService = this.accessory.getService(Service.Valve)
@@ -184,7 +184,7 @@ export class PPAccessory {
         try {
           const firmware = await this.platform.phynApi.getFirmwareInfo(device.device_id);
           this.accessory.getService(this.platform.Service.AccessoryInformation)!
-            .setCharacteristic(this.platform.Characteristic.FirmwareRevision, firmware.fw_version ?? '');
+            .setCharacteristic(this.platform.Characteristic.FirmwareRevision, String(firmware.fw_version ?? ''));
         } catch (err) {
           this.platform.log.warn(`Failed to get firmware info: ${(err as Error).message}`);
         }

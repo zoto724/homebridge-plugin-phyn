@@ -11,7 +11,7 @@ export interface PhynDevice {
   device_id: string;
   product_code: string;
   serial_number: string;
-  fw_version: string;
+  fw_version: string | number;
   online_status: { v: string };
 }
 
@@ -79,7 +79,7 @@ export interface PhynHealthTest {
 }
 
 export interface PhynFirmware {
-  fw_version: string;
+  fw_version: string | number;
   fw_img_name?: string;
   product_code?: string;
   release_notes?: string;

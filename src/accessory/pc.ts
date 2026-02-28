@@ -19,7 +19,7 @@ export class PCAccessory {
       .setCharacteristic(Characteristic.Manufacturer, 'Phyn')
       .setCharacteristic(Characteristic.Model, device.product_code)
       .setCharacteristic(Characteristic.SerialNumber, device.serial_number)
-      .setCharacteristic(Characteristic.FirmwareRevision, device.fw_version ?? '');
+      .setCharacteristic(Characteristic.FirmwareRevision, String(device.fw_version ?? ''));
 
     // Hot Water Temperature sensor
     const hotTempService = this.accessory.getService('Hot Water Temperature')

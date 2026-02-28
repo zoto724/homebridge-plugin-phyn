@@ -21,7 +21,7 @@ export class PWAccessory {
       .setCharacteristic(Characteristic.Manufacturer, 'Phyn')
       .setCharacteristic(Characteristic.Model, device.product_code)
       .setCharacteristic(Characteristic.SerialNumber, device.serial_number)
-      .setCharacteristic(Characteristic.FirmwareRevision, device.fw_version ?? '');
+      .setCharacteristic(Characteristic.FirmwareRevision, String(device.fw_version ?? ''));
 
     // LeakSensor service
     const leakService = this.accessory.getService(Service.LeakSensor)

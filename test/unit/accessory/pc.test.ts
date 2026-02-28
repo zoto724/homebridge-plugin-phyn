@@ -234,6 +234,19 @@ describe('PCAccessory', () => {
       const firmwareCall = calls.find((c) => c[0] === platform.Characteristic.FirmwareRevision);
       expect(firmwareCall?.[1]).toBe(defaultDevice.fw_version);
     });
+
+    it('coerces numeric fw_version to string for FirmwareRevision', () => {
+      const platform = createMockPlatform();
+      const accessory = createMockAccessory({ ...defaultDevice, fw_version: 20250101 as any });
+
+      new PCAccessory(platform as any, accessory as any);
+
+      const infoSvc = accessory._services.get('AccessoryInformation');
+      const calls: any[][] = infoSvc.setCharacteristic.mock.calls;
+      const firmwareCall = calls.find((c) => c[0] === platform.Characteristic.FirmwareRevision);
+      expect(typeof firmwareCall?.[1]).toBe('string');
+      expect(firmwareCall?.[1]).toBe('20250101');
+    });
   });
 
   describe('setFault()', () => {
