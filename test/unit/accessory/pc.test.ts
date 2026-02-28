@@ -77,8 +77,9 @@ function createMockPlatform(apiOverrides: any = {}) {
   const phynApi: any = {
     getDeviceState: vi.fn().mockResolvedValue({
       device_id: 'dev-pc-001',
-      temperature: { mean: 68 },
-      online_status: 'online',
+      temperature1: { mean: 68 },
+      temperature2: { mean: 65 },
+      online_status: { v: 'online' },
     }),
     ...apiOverrides,
   };
@@ -96,8 +97,8 @@ const defaultDevice = {
   device_id: 'dev-pc-001',
   product_code: 'PC21',
   serial_number: 'SN-PC-001',
-  firmware_version: '3.0.0',
-  online_status: 'online',
+  fw_version: '3.0.0',
+  online_status: { v: 'online' },
 };
 
 // ---------------------------------------------------------------------------
@@ -222,7 +223,7 @@ describe('PCAccessory', () => {
       expect(serialCall?.[1]).toBe(defaultDevice.serial_number);
     });
 
-    it('sets FirmwareRevision to device firmware_version', () => {
+    it('sets FirmwareRevision to device fw_version', () => {
       const platform = createMockPlatform();
       const accessory = createMockAccessory(defaultDevice);
 
@@ -231,7 +232,7 @@ describe('PCAccessory', () => {
       const infoSvc = accessory._services.get('AccessoryInformation');
       const calls: any[][] = infoSvc.setCharacteristic.mock.calls;
       const firmwareCall = calls.find((c) => c[0] === platform.Characteristic.FirmwareRevision);
-      expect(firmwareCall?.[1]).toBe(defaultDevice.firmware_version);
+      expect(firmwareCall?.[1]).toBe(defaultDevice.fw_version);
     });
   });
 

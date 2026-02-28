@@ -8,14 +8,12 @@ vi.mock('../../src/accessory/pw.js', () => ({ PWAccessory: vi.fn() }));
 // Mock PhynApi
 const mockAuthenticate = vi.fn();
 const mockGetHomes = vi.fn();
-const mockGetDevices = vi.fn();
 const mockGetIotPolicy = vi.fn();
 
 vi.mock('../../src/api/phynApi.js', () => ({
   PhynApi: vi.fn().mockImplementation(() => ({
     authenticate: mockAuthenticate,
     getHomes: mockGetHomes,
-    getDevices: mockGetDevices,
     getIotPolicy: mockGetIotPolicy,
   })),
   AuthError: class AuthError extends Error {
@@ -66,7 +64,6 @@ describe('PhynPlatform', () => {
     vi.clearAllMocks();
     mockAuthenticate.mockResolvedValue(undefined);
     mockGetHomes.mockResolvedValue([]);
-    mockGetDevices.mockResolvedValue([]);
     mockGetIotPolicy.mockResolvedValue({ wss_url: 'wss://test.example.com', user_id: 'user1' });
     mockMqttConnect.mockResolvedValue(undefined);
   });
@@ -224,11 +221,11 @@ describe('PhynPlatform', () => {
       expect(mockGetHomes).toHaveBeenCalledOnce();
     });
 
-    it('calls getDevices() for each home returned', async () => {
+    it('reads devices from each home returned', async () => {
       const { PhynPlatform } = await import('../../src/platform.js');
       mockGetHomes.mockResolvedValue([
-        { id: 'home1', name: 'Home 1' },
-        { id: 'home2', name: 'Home 2' },
+        { id: 'home1', name: 'Home 1', devices: [] },
+        { id: 'home2', name: 'Home 2', devices: [] },
       ]);
 
       const log = createMockLog();
@@ -238,17 +235,18 @@ describe('PhynPlatform', () => {
 
       await platform.discoverDevices();
 
-      expect(mockGetDevices).toHaveBeenCalledTimes(2);
-      expect(mockGetDevices).toHaveBeenCalledWith('home1');
-      expect(mockGetDevices).toHaveBeenCalledWith('home2');
+      // getHomes is called once; devices are embedded in the response
+      expect(mockGetHomes).toHaveBeenCalledOnce();
     });
 
     it('registers new accessories for discovered devices', async () => {
       const { PhynPlatform } = await import('../../src/platform.js');
-      mockGetHomes.mockResolvedValue([{ id: 'home1', name: 'Home 1' }]);
-      mockGetDevices.mockResolvedValue([
-        { device_id: 'dev1', product_code: 'PP21', serial_number: 'SN1', firmware_version: '1.0', online_status: 'online' },
-      ]);
+      mockGetHomes.mockResolvedValue([{
+        id: 'home1', name: 'Home 1',
+        devices: [
+          { device_id: 'dev1', product_code: 'PP21', serial_number: 'SN1', fw_version: '1.0', online_status: { v: 'online' } },
+        ],
+      }]);
 
       const log = createMockLog();
       const api = createMockApi();
@@ -329,7 +327,7 @@ describe('PhynPlatform', () => {
       const platform = new PhynPlatform(log as any, config as any, api as any);
 
       await expect(platform.discoverDevices()).resolves.toBeUndefined();
-      expect(log.error).toHaveBeenCalledWith(expect.stringContaining('MQTT'));
+      expect(log.warn).toHaveBeenCalledWith(expect.stringContaining('MQTT'));
     });
 
     it('does not call mqttClient.connect() when auth fails', async () => {
@@ -354,10 +352,10 @@ describe('PhynPlatform', () => {
 
       vi.clearAllMocks();
       mockAuthenticate.mockResolvedValue(undefined);
-      mockGetHomes.mockResolvedValue([{ id: 'home1', name: 'Home' }]);
-      mockGetDevices.mockResolvedValue([
-        { device_id: 'pp-dev', product_code: 'PP21', serial_number: 'SN1', firmware_version: '1.0', online_status: 'online' },
-      ]);
+      mockGetHomes.mockResolvedValue([{
+        id: 'home1', name: 'Home',
+        devices: [{ device_id: 'pp-dev', product_code: 'PP21', serial_number: 'SN1', fw_version: '1.0', online_status: { v: 'online' } }],
+      }]);
       mockGetIotPolicy.mockResolvedValue({ wss_url: 'wss://test', user_id: 'user1' });
       mockMqttConnect.mockResolvedValue(undefined);
 
@@ -377,10 +375,10 @@ describe('PhynPlatform', () => {
 
       vi.clearAllMocks();
       mockAuthenticate.mockResolvedValue(undefined);
-      mockGetHomes.mockResolvedValue([{ id: 'home1', name: 'Home' }]);
-      mockGetDevices.mockResolvedValue([
-        { device_id: 'pc-dev', product_code: 'PC21', serial_number: 'SN2', firmware_version: '1.0', online_status: 'online' },
-      ]);
+      mockGetHomes.mockResolvedValue([{
+        id: 'home1', name: 'Home',
+        devices: [{ device_id: 'pc-dev', product_code: 'PC21', serial_number: 'SN2', fw_version: '1.0', online_status: { v: 'online' } }],
+      }]);
       mockGetIotPolicy.mockResolvedValue({ wss_url: 'wss://test', user_id: 'user1' });
       mockMqttConnect.mockResolvedValue(undefined);
 
@@ -400,10 +398,10 @@ describe('PhynPlatform', () => {
 
       vi.clearAllMocks();
       mockAuthenticate.mockResolvedValue(undefined);
-      mockGetHomes.mockResolvedValue([{ id: 'home1', name: 'Home' }]);
-      mockGetDevices.mockResolvedValue([
-        { device_id: 'pw-dev', product_code: 'PW21', serial_number: 'SN3', firmware_version: '1.0', online_status: 'online' },
-      ]);
+      mockGetHomes.mockResolvedValue([{
+        id: 'home1', name: 'Home',
+        devices: [{ device_id: 'pw-dev', product_code: 'PW21', serial_number: 'SN3', fw_version: '1.0', online_status: { v: 'online' } }],
+      }]);
       mockGetIotPolicy.mockResolvedValue({ wss_url: 'wss://test', user_id: 'user1' });
       mockMqttConnect.mockResolvedValue(undefined);
 
@@ -422,10 +420,10 @@ describe('PhynPlatform', () => {
 
       vi.clearAllMocks();
       mockAuthenticate.mockResolvedValue(undefined);
-      mockGetHomes.mockResolvedValue([{ id: 'home1', name: 'Home' }]);
-      mockGetDevices.mockResolvedValue([
-        { device_id: 'unknown-dev', product_code: 'XY99', serial_number: 'SN4', firmware_version: '1.0', online_status: 'online' },
-      ]);
+      mockGetHomes.mockResolvedValue([{
+        id: 'home1', name: 'Home',
+        devices: [{ device_id: 'unknown-dev', product_code: 'XY99', serial_number: 'SN4', fw_version: '1.0', online_status: { v: 'online' } }],
+      }]);
       mockGetIotPolicy.mockResolvedValue({ wss_url: 'wss://test', user_id: 'user1' });
       mockMqttConnect.mockResolvedValue(undefined);
 
@@ -446,8 +444,7 @@ describe('PhynPlatform', () => {
 
       vi.clearAllMocks();
       mockAuthenticate.mockResolvedValue(undefined);
-      mockGetHomes.mockResolvedValue([{ id: 'home1', name: 'Home' }]);
-      mockGetDevices.mockResolvedValue([]);
+      mockGetHomes.mockResolvedValue([{ id: 'home1', name: 'Home', devices: [] }]);
       mockGetIotPolicy.mockResolvedValue({ wss_url: 'wss://test', user_id: 'user1' });
       mockMqttConnect.mockResolvedValue(undefined);
 

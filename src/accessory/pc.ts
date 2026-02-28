@@ -19,7 +19,7 @@ export class PCAccessory {
       .setCharacteristic(Characteristic.Manufacturer, 'Phyn')
       .setCharacteristic(Characteristic.Model, device.product_code)
       .setCharacteristic(Characteristic.SerialNumber, device.serial_number)
-      .setCharacteristic(Characteristic.FirmwareRevision, device.firmware_version);
+      .setCharacteristic(Characteristic.FirmwareRevision, device.fw_version ?? '');
 
     // Hot Water Temperature sensor
     const hotTempService = this.accessory.getService('Hot Water Temperature')
@@ -60,20 +60,24 @@ export class PCAccessory {
   updateFromState(state: PhynDeviceState): void {
     const { Characteristic } = this.platform;
 
-    const tempC = fahrenheitToCelsius(state.temperature?.mean ?? 32);
+    // PC has separate hot/cold temperature lines
+    const temp1 = state.temperature1;
+    const temp2 = state.temperature2;
+    const hotTempC = fahrenheitToCelsius(temp1?.v ?? temp1?.mean ?? 32);
+    const coldTempC = fahrenheitToCelsius(temp2?.v ?? temp2?.mean ?? 32);
 
     const hotTempService = this.accessory.getService('Hot Water Temperature');
     if (hotTempService) {
-      hotTempService.updateCharacteristic(Characteristic.CurrentTemperature, tempC);
+      hotTempService.updateCharacteristic(Characteristic.CurrentTemperature, hotTempC);
     }
 
     const coldTempService = this.accessory.getService('Cold Water Temperature');
     if (coldTempService) {
-      coldTempService.updateCharacteristic(Characteristic.CurrentTemperature, tempC);
+      coldTempService.updateCharacteristic(Characteristic.CurrentTemperature, coldTempC);
     }
 
-    // Set fault status based on online_status
-    this.setFault(state.online_status !== 'online');
+    // online_status is {v: "online"} shape
+    this.setFault(state.online_status?.v !== 'online');
   }
 
   setFault(fault: boolean): void {

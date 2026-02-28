@@ -69,7 +69,7 @@ function createMockPlatform(apiOverrides: any = {}) {
     InUse: { IN_USE: 1, NOT_IN_USE: 0 },
     LeakDetected: { LEAK_DETECTED: 1, LEAK_NOT_DETECTED: 0 },
     CurrentTemperature: 'CurrentTemperature',
-    ValveType: { WATER: 2 },
+    ValveType: { WATER: 2, WATER_FAUCET: 2 },
     On: 'On',
   };
 
@@ -85,17 +85,18 @@ function createMockPlatform(apiOverrides: any = {}) {
     openValve: vi.fn().mockResolvedValue(undefined),
     closeValve: vi.fn().mockResolvedValue(undefined),
     getDeviceState: vi.fn().mockResolvedValue({
-      device_id: 'dev-001', sov_status: 'Open',
+      device_id: 'dev-001', sov_status: { v: 'Open' },
       flow: { mean: 0 }, pressure: { mean: 0 }, temperature: { mean: 68 },
-      online_status: 'online',
+      online_status: { v: 'online' },
     }),
     getConsumptionDetails: vi.fn().mockResolvedValue({}),
-    getFirmwareInfo: vi.fn().mockResolvedValue({ version: '1.0' }),
-    getLeakSensitivityAwayMode: vi.fn().mockResolvedValue(false),
-    setPreferences: vi.fn().mockResolvedValue(undefined),
-    getAutoShutoff: vi.fn().mockResolvedValue({ enabled: false }),
-    enableAutoShutoff: vi.fn().mockResolvedValue(undefined),
-    disableAutoShutoff: vi.fn().mockResolvedValue(undefined),
+    getFirmwareInfo: vi.fn().mockResolvedValue({ fw_version: '1.0' }),
+    getDevicePreferences: vi.fn().mockResolvedValue([
+      { device_id: 'dev-001', name: 'leak_sensitivity_away_mode', value: 'false' },
+    ]),
+    setDevicePreferences: vi.fn().mockResolvedValue(undefined),
+    getAutoShutoff: vi.fn().mockResolvedValue({ auto_shutoff_enable: false }),
+    setAutoShutoffEnabled: vi.fn().mockResolvedValue(undefined),
     ...apiOverrides,
   };
 
@@ -125,8 +126,8 @@ const defaultDevice = {
   device_id: 'dev-001',
   product_code: 'PP21',
   serial_number: 'SN-001',
-  firmware_version: '2.0.0',
-  online_status: 'online',
+  fw_version: '2.0.0',
+  online_status: { v: 'online' },
 };
 
 // ---------------------------------------------------------------------------
@@ -143,21 +144,19 @@ describe('PPAccessory', () => {
   });
 
   describe('Valve service', () => {
-    it('sets ValveType to WATER (2) on the Valve service', () => {
+    it('sets ValveType to WATER_FAUCET on the Valve service', () => {
       const platform = createMockPlatform();
       const accessory = createMockAccessory(defaultDevice);
 
       new PPAccessory(platform as any, accessory as any);
 
-      // The Valve service is added via addService since getService returns null initially
       const valveSvc = accessory._services.get('Valve');
       expect(valveSvc).toBeDefined();
 
-      // setCharacteristic should have been called with ValveType.WATER (2)
       const calls: any[][] = valveSvc.setCharacteristic.mock.calls;
       const valveTypeCall = calls.find((c) => c[0] === platform.Characteristic.ValveType);
       expect(valveTypeCall).toBeDefined();
-      expect(valveTypeCall![1]).toBe(platform.Characteristic.ValveType.WATER); // 2
+      expect(valveTypeCall![1]).toBe(platform.Characteristic.ValveType.WATER_FAUCET); // 2
     });
 
     it('registers onGet and onSet handlers for Active characteristic', () => {
@@ -300,7 +299,7 @@ describe('PPAccessory', () => {
       expect(serialCall?.[1]).toBe(defaultDevice.serial_number);
     });
 
-    it('sets FirmwareRevision to device firmware_version', () => {
+    it('sets FirmwareRevision to device fw_version', () => {
       const platform = createMockPlatform();
       const accessory = createMockAccessory(defaultDevice);
 
@@ -309,7 +308,7 @@ describe('PPAccessory', () => {
       const infoSvc = accessory._services.get('AccessoryInformation');
       const calls: any[][] = infoSvc.setCharacteristic.mock.calls;
       const firmwareCall = calls.find((c) => c[0] === platform.Characteristic.FirmwareRevision);
-      expect(firmwareCall?.[1]).toBe(defaultDevice.firmware_version);
+      expect(firmwareCall?.[1]).toBe(defaultDevice.fw_version);
     });
   });
 

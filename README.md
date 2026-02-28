@@ -1,7 +1,5 @@
 # homebridge-phyn
 
-!! NOT YET WORKING !!
-
 A [Homebridge](https://homebridge.io) plugin for [Phyn](https://www.phyn.com) water monitoring devices, including Kohler-branded variants.
 
 ## Supported Devices
@@ -75,7 +73,7 @@ Tests use [Vitest](https://vitest.dev) with [fast-check](https://fast-check.dev)
 
 ## Attribution
 
-This plugin was AI-generated, inspired by [helicopterrun/phyn](https://github.com/helicopterrun/phyn). That project provided the foundation for understanding the Phyn API and device model.
+This plugin was AI-generated, inspired by [helicopterrun/phyn](https://github.com/helicopterrun/phyn). API endpoint shapes and behavior were cross-referenced against [jordanruthe/homeassistant-phyn](https://github.com/jordanruthe/homeassistant-phyn) and the underlying [jordanruthe/aiophyn](https://github.com/jordanruthe/aiophyn) Python library (a maintained fork of the original archived [MizterB/aiophyn](https://github.com/MizterB/aiophyn)).
 
 ## License
 

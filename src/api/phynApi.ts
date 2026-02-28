@@ -18,13 +18,11 @@ import {
 } from '../settings.js';
 import type {
   PhynHome,
-  PhynDevice,
   PhynDeviceState,
   PhynConsumption,
   PhynWaterStats,
   PhynFirmware,
   PhynHealthTest,
-  PhynIotPolicy,
   PhynAutoShutoff,
 } from '../types.js';
 
@@ -130,7 +128,7 @@ export class PhynApi {
     return this.config['brand'] === 'kohler' ? API_KEY_KOHLER : API_KEY_PHYN;
   }
 
-  private async request<T>(method: string, path: string, body?: unknown): Promise<T> {
+  private async request<T>(method: string, path: string, body?: unknown, params?: Record<string, unknown>): Promise<T> {
     await this.refreshTokenIfNeeded();
     const response = await axios.request<T>({
       method,
@@ -141,71 +139,86 @@ export class PhynApi {
         'Content-Type': 'application/json',
       },
       data: body,
+      params,
     });
     return response.data;
   }
 
+  // Returns homes with embedded devices array
   async getHomes(): Promise<PhynHome[]> {
-    return this.request<PhynHome[]>('GET', '/homeowner/homes');
-  }
-
-  async getDevices(homeId: string): Promise<PhynDevice[]> {
-    return this.request<PhynDevice[]>('GET', `/homeowner/homes/${homeId}/devices`);
+    const username = this.config['username'] as string;
+    return this.request<PhynHome[]>('GET', '/homes', undefined, { user_id: username });
   }
 
   async getDeviceState(deviceId: string): Promise<PhynDeviceState> {
-    return this.request<PhynDeviceState>('GET', `/homeowner/devices/${deviceId}/state`);
+    return this.request<PhynDeviceState>('GET', `/devices/${deviceId}/state`);
   }
 
-  async getConsumptionDetails(deviceId: string): Promise<PhynConsumption> {
-    return this.request<PhynConsumption>('GET', `/homeowner/devices/${deviceId}/consumption`);
+  async getConsumptionDetails(deviceId: string, duration: string): Promise<PhynConsumption> {
+    return this.request<PhynConsumption>('GET', `/devices/${deviceId}/consumption/details`, undefined, {
+      device_id: deviceId,
+      duration,
+      precision: 6,
+    });
   }
 
-  async getWaterStatistics(deviceId: string): Promise<PhynWaterStats> {
-    return this.request<PhynWaterStats>('GET', `/homeowner/devices/${deviceId}/water-statistics`);
+  async getWaterStatistics(deviceId: string, fromTs: number, toTs: number): Promise<PhynWaterStats[]> {
+    return this.request<PhynWaterStats[]>('GET', `/devices/${deviceId}/water_statistics/history/`, undefined, {
+      from_ts: fromTs,
+      to_ts: toTs,
+    });
   }
 
   async getFirmwareInfo(deviceId: string): Promise<PhynFirmware> {
-    return this.request<PhynFirmware>('GET', `/homeowner/devices/${deviceId}/firmware`);
+    // Returns an array; take the first element
+    const result = await this.request<PhynFirmware[]>('GET', `/firmware/latestVersion/v2`, undefined, {
+      device_id: deviceId,
+    });
+    return result[0];
   }
 
-  async getHealthTests(deviceId: string): Promise<PhynHealthTest[]> {
-    return this.request<PhynHealthTest[]>('GET', `/homeowner/devices/${deviceId}/health-tests`);
-  }
-
-  async getIotPolicy(userId: string): Promise<PhynIotPolicy> {
-    return this.request<PhynIotPolicy>('GET', `/homeowner/users/${userId}/iot-policy`);
+  async getHealthTests(deviceId: string): Promise<PhynHealthTest> {
+    return this.request<PhynHealthTest>('GET', `/devices/${deviceId}/health_tests`, undefined, {
+      list_type: 'grouped',
+    });
   }
 
   async openValve(deviceId: string): Promise<void> {
-    await this.request<void>('PUT', `/homeowner/devices/${deviceId}/sov`, { state: 'Open' });
+    await this.request<void>('POST', `/devices/${deviceId}/sov/Open`);
   }
 
   async closeValve(deviceId: string): Promise<void> {
-    await this.request<void>('PUT', `/homeowner/devices/${deviceId}/sov`, { state: 'Close' });
+    await this.request<void>('POST', `/devices/${deviceId}/sov/Close`);
   }
 
-  async getLeakSensitivityAwayMode(deviceId: string): Promise<boolean> {
-    const result = await this.request<{ away_mode: boolean }>('GET', `/homeowner/devices/${deviceId}/preferences`);
-    return result.away_mode;
+  async getDevicePreferences(deviceId: string): Promise<PhynPreference[]> {
+    return this.request<PhynPreference[]>('GET', `/preferences/device/${deviceId}`);
   }
 
-  async setPreferences(deviceId: string, prefs: Record<string, unknown>): Promise<void> {
-    await this.request<void>('PUT', `/homeowner/devices/${deviceId}/preferences`, prefs);
+  async setDevicePreferences(deviceId: string, prefs: PhynPreference[]): Promise<void> {
+    await this.request<void>('POST', `/preferences/device/${deviceId}`, prefs);
   }
 
   async getAutoShutoff(deviceId: string): Promise<PhynAutoShutoff> {
-    return this.request<PhynAutoShutoff>('GET', `/homeowner/devices/${deviceId}/auto-shutoff`);
+    return this.request<PhynAutoShutoff>('GET', `/devices/${deviceId}/auto_shutoff`);
   }
 
-  async enableAutoShutoff(deviceId: string): Promise<void> {
-    await this.request<void>('PUT', `/homeowner/devices/${deviceId}/auto-shutoff`, { enabled: true });
+  async setAutoShutoffEnabled(deviceId: string, enabled: boolean, time?: number): Promise<void> {
+    let path = `/devices/${deviceId}/auto_shutoff/status/${enabled ? 'Enable' : 'Disable'}`;
+    if (!enabled && time !== undefined) {
+      path += `/${time}`;
+    }
+    await this.request<void>('POST', path);
   }
 
-  async disableAutoShutoff(deviceId: string, time?: number): Promise<void> {
-    await this.request<void>('PUT', `/homeowner/devices/${deviceId}/auto-shutoff`, {
-      enabled: false,
-      ...(time !== undefined ? { time } : {}),
-    });
+  async getIotPolicy(userId: string): Promise<{ wss_url: string }> {
+    const encodedUserId = encodeURIComponent(userId);
+    return this.request<{ wss_url: string }>('POST', `/users/${encodedUserId}/iot_policy`);
   }
+}
+
+export interface PhynPreference {
+  device_id: string;
+  name: string;
+  value: string;
 }

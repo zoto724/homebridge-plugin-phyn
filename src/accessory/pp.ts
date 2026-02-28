@@ -21,7 +21,7 @@ export class PPAccessory {
       .setCharacteristic(Characteristic.Manufacturer, 'Phyn')
       .setCharacteristic(Characteristic.Model, device.product_code)
       .setCharacteristic(Characteristic.SerialNumber, device.serial_number)
-      .setCharacteristic(Characteristic.FirmwareRevision, device.firmware_version);
+      .setCharacteristic(Characteristic.FirmwareRevision, device.fw_version ?? '');
 
     // Valve service
     const valveService = this.accessory.getService(Service.Valve)
@@ -79,7 +79,7 @@ export class PPAccessory {
   private async getActive(): Promise<CharacteristicValue> {
     const { Characteristic } = this.platform;
     if (!this.currentState) return Characteristic.Active.INACTIVE;
-    return this.currentState.sov_status === 'Open'
+    return this.currentState.sov_status?.v === 'Open'
       ? Characteristic.Active.ACTIVE
       : Characteristic.Active.INACTIVE;
   }
@@ -102,7 +102,9 @@ export class PPAccessory {
   private async getInUse(): Promise<CharacteristicValue> {
     const { Characteristic } = this.platform;
     if (!this.currentState) return Characteristic.InUse.NOT_IN_USE;
-    return this.currentState.flow?.mean > 0
+    const flow = this.currentState.flow;
+    const flowVal = flow?.v ?? flow?.mean ?? 0;
+    return flowVal > 0
       ? Characteristic.InUse.IN_USE
       : Characteristic.InUse.NOT_IN_USE;
   }
@@ -117,13 +119,16 @@ export class PPAccessory {
 
   private async getCurrentTemperature(): Promise<CharacteristicValue> {
     if (!this.currentState) return 0;
-    return fahrenheitToCelsius(this.currentState.temperature?.mean ?? 32);
+    const temp = this.currentState.temperature;
+    return fahrenheitToCelsius(temp?.v ?? temp?.mean ?? 32);
   }
 
   private async getAwayMode(): Promise<CharacteristicValue> {
     try {
       const device = this.accessory.context.device;
-      return await this.platform.phynApi.getLeakSensitivityAwayMode(device.device_id);
+      const prefs = await this.platform.phynApi.getDevicePreferences(device.device_id);
+      const awayPref = prefs.find(p => p.name === 'leak_sensitivity_away_mode');
+      return awayPref?.value === 'true';
     } catch (err) {
       this.platform.log.error(`Failed to get away mode: ${(err as Error).message}`);
       throw new this.platform.api.hap.HapStatusError(HAPStatus.SERVICE_COMMUNICATION_FAILURE);
@@ -133,7 +138,11 @@ export class PPAccessory {
   private async setAwayMode(value: CharacteristicValue): Promise<void> {
     const device = this.accessory.context.device;
     try {
-      await this.platform.phynApi.setPreferences(device.device_id, { away_mode: value as boolean });
+      await this.platform.phynApi.setDevicePreferences(device.device_id, [{
+        device_id: device.device_id,
+        name: 'leak_sensitivity_away_mode',
+        value: value ? 'true' : 'false',
+      }]);
     } catch (err) {
       this.platform.log.error(`Failed to set away mode: ${(err as Error).message}`);
       throw new this.platform.api.hap.HapStatusError(HAPStatus.SERVICE_COMMUNICATION_FAILURE);
@@ -144,7 +153,7 @@ export class PPAccessory {
     try {
       const device = this.accessory.context.device;
       const result = await this.platform.phynApi.getAutoShutoff(device.device_id);
-      return result.enabled;
+      return result.auto_shutoff_enable;
     } catch (err) {
       this.platform.log.error(`Failed to get auto shutoff: ${(err as Error).message}`);
       throw new this.platform.api.hap.HapStatusError(HAPStatus.SERVICE_COMMUNICATION_FAILURE);
@@ -154,11 +163,7 @@ export class PPAccessory {
   private async setAutoShutoff(value: CharacteristicValue): Promise<void> {
     const device = this.accessory.context.device;
     try {
-      if (value) {
-        await this.platform.phynApi.enableAutoShutoff(device.device_id);
-      } else {
-        await this.platform.phynApi.disableAutoShutoff(device.device_id);
-      }
+      await this.platform.phynApi.setAutoShutoffEnabled(device.device_id, value as boolean);
     } catch (err) {
       this.platform.log.error(`Failed to set auto shutoff: ${(err as Error).message}`);
       throw new this.platform.api.hap.HapStatusError(HAPStatus.SERVICE_COMMUNICATION_FAILURE);
@@ -169,13 +174,17 @@ export class PPAccessory {
     const device = this.accessory.context.device;
     try {
       const state = await this.platform.phynApi.getDeviceState(device.device_id);
-      await this.platform.phynApi.getConsumptionDetails(device.device_id);
+
+      // Consumption requires a date duration string
+      const today = new Date();
+      const duration = `${today.getFullYear()}/${String(today.getMonth() + 1).padStart(2, '0')}/${String(today.getDate()).padStart(2, '0')}`;
+      await this.platform.phynApi.getConsumptionDetails(device.device_id, duration);
 
       if (this.pollCycle % FIRMWARE_POLL_EVERY_N_CYCLES === 0) {
         try {
           const firmware = await this.platform.phynApi.getFirmwareInfo(device.device_id);
           this.accessory.getService(this.platform.Service.AccessoryInformation)!
-            .setCharacteristic(this.platform.Characteristic.FirmwareRevision, firmware.version);
+            .setCharacteristic(this.platform.Characteristic.FirmwareRevision, firmware.fw_version ?? '');
         } catch (err) {
           this.platform.log.warn(`Failed to get firmware info: ${(err as Error).message}`);
         }
@@ -194,11 +203,13 @@ export class PPAccessory {
 
     const valveService = this.accessory.getService(Service.Valve);
     if (valveService) {
-      const isActive = state.sov_status === 'Open'
+      const isActive = state.sov_status?.v === 'Open'
         ? Characteristic.Active.ACTIVE
         : Characteristic.Active.INACTIVE;
       valveService.updateCharacteristic(Characteristic.Active, isActive);
-      const inUse = state.flow?.mean > 0
+      const flow = state.flow;
+      const flowVal = flow?.v ?? flow?.mean ?? 0;
+      const inUse = flowVal > 0
         ? Characteristic.InUse.IN_USE
         : Characteristic.InUse.NOT_IN_USE;
       valveService.updateCharacteristic(Characteristic.InUse, inUse);
@@ -214,9 +225,10 @@ export class PPAccessory {
 
     const tempService = this.accessory.getService(Service.TemperatureSensor);
     if (tempService) {
+      const temp = state.temperature;
       tempService.updateCharacteristic(
         Characteristic.CurrentTemperature,
-        fahrenheitToCelsius(state.temperature?.mean ?? 32),
+        fahrenheitToCelsius(temp?.v ?? temp?.mean ?? 32),
       );
     }
   }
@@ -224,41 +236,41 @@ export class PPAccessory {
   updateFromMqtt(payload: PhynMqttPayload): void {
     const { Service, Characteristic } = this.platform;
 
-    if (payload.sov_status !== undefined) {
+    // sov_state in MQTT maps to sov_status.v in device state
+    if (payload.sov_state !== undefined) {
       const valveService = this.accessory.getService(Service.Valve);
       if (valveService) {
-        const isActive = payload.sov_status === 'Open'
+        const isActive = payload.sov_state === 'Open'
           ? Characteristic.Active.ACTIVE
           : Characteristic.Active.INACTIVE;
         valveService.updateCharacteristic(Characteristic.Active, isActive);
         if (this.currentState) {
-          this.currentState.sov_status = payload.sov_status;
+          this.currentState.sov_status = { v: payload.sov_state };
         }
       }
     }
 
-    if (payload.temperature !== undefined) {
+    if (payload.sensor_data?.temperature !== undefined) {
       const tempService = this.accessory.getService(Service.TemperatureSensor);
       if (tempService) {
+        const temp = payload.sensor_data.temperature;
         tempService.updateCharacteristic(
           Characteristic.CurrentTemperature,
-          fahrenheitToCelsius(payload.temperature.mean),
+          fahrenheitToCelsius(temp.v ?? temp.mean ?? 32),
         );
-      }
-    }
-
-    if (payload.alerts !== undefined) {
-      const leakService = this.accessory.getService(Service.LeakSensor);
-      if (leakService) {
-        const leakDetected = payload.alerts.is_leak
-          ? Characteristic.LeakDetected.LEAK_DETECTED
-          : Characteristic.LeakDetected.LEAK_NOT_DETECTED;
-        leakService.updateCharacteristic(Characteristic.LeakDetected, leakDetected);
       }
     }
 
     if (payload.flow !== undefined && this.currentState) {
       this.currentState.flow = payload.flow;
+      const valveService = this.accessory.getService(Service.Valve);
+      if (valveService) {
+        const flowVal = payload.flow.v ?? payload.flow.mean ?? 0;
+        valveService.updateCharacteristic(
+          Characteristic.InUse,
+          flowVal > 0 ? Characteristic.InUse.IN_USE : Characteristic.InUse.NOT_IN_USE,
+        );
+      }
     }
   }
 }

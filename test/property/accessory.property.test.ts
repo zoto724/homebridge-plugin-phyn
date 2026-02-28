@@ -86,12 +86,13 @@ function createMockPlatform(apiOverrides: any = {}) {
     closeValve: vi.fn().mockResolvedValue(undefined),
     getDeviceState: vi.fn().mockResolvedValue(null),
     getConsumptionDetails: vi.fn().mockResolvedValue({}),
-    getFirmwareInfo: vi.fn().mockResolvedValue({ version: '1.0' }),
-    getLeakSensitivityAwayMode: vi.fn().mockResolvedValue(false),
-    setPreferences: vi.fn().mockResolvedValue(undefined),
-    getAutoShutoff: vi.fn().mockResolvedValue({ enabled: false }),
-    enableAutoShutoff: vi.fn().mockResolvedValue(undefined),
-    disableAutoShutoff: vi.fn().mockResolvedValue(undefined),
+    getFirmwareInfo: vi.fn().mockResolvedValue({ fw_version: '1.0' }),
+    getDevicePreferences: vi.fn().mockResolvedValue([
+      { device_id: 'dev-001', name: 'leak_sensitivity_away_mode', value: 'false' },
+    ]),
+    setDevicePreferences: vi.fn().mockResolvedValue(undefined),
+    getAutoShutoff: vi.fn().mockResolvedValue({ auto_shutoff_enable: false }),
+    setAutoShutoffEnabled: vi.fn().mockResolvedValue(undefined),
     ...apiOverrides,
   };
 
@@ -122,8 +123,8 @@ function makeDevice(overrides: any = {}) {
     device_id: 'dev-001',
     product_code: 'PP21',
     serial_number: 'SN-001',
-    firmware_version: '2.0.0',
-    online_status: 'online',
+    fw_version: '2.0.0',
+    online_status: { v: 'online' },
     ...overrides,
   };
 }
@@ -147,9 +148,9 @@ describe('Property 12: Valve control maps Active to correct API call', () => {
 
           // Prevent initial poll from interfering
           platform.phynApi.getDeviceState.mockResolvedValue({
-            device_id: deviceId, sov_status: 'Open',
+            device_id: deviceId, sov_status: { v: 'Open' },
             flow: { mean: 0 }, pressure: { mean: 0 }, temperature: { mean: 68 },
-            online_status: 'online',
+            online_status: { v: 'online' },
           });
 
           const pp = new PPAccessory(platform as any, accessory as any);
@@ -184,9 +185,9 @@ describe('Property 12: Valve control maps Active to correct API call', () => {
           const accessory = createMockAccessory(device);
 
           platform.phynApi.getDeviceState.mockResolvedValue({
-            device_id: deviceId, sov_status: 'Close',
+            device_id: deviceId, sov_status: { v: 'Close' },
             flow: { mean: 0 }, pressure: { mean: 0 }, temperature: { mean: 68 },
-            online_status: 'online',
+            online_status: { v: 'online' },
           });
 
           const pp = new PPAccessory(platform as any, accessory as any);
@@ -226,9 +227,9 @@ describe('Property 13: Leak detection maps correctly to LeakDetected (PP)', () =
           const accessory = createMockAccessory(device);
 
           const state = {
-            device_id: device.device_id, sov_status: 'Open' as const,
+            device_id: device.device_id, sov_status: { v: 'Open' as const },
             flow: { mean: 0 }, pressure: { mean: 0 }, temperature: { mean: 68 },
-            online_status: 'online',
+            online_status: { v: 'online' },
             alerts: { is_leak: isLeak },
           };
           platform.phynApi.getDeviceState.mockResolvedValue(state);
@@ -270,8 +271,8 @@ describe('Property 14: AccessoryInformation fields are populated from device dat
           device_id: fc.string({ minLength: 1 }),
           product_code: fc.string({ minLength: 1 }),
           serial_number: fc.string({ minLength: 1 }),
-          firmware_version: fc.string({ minLength: 1 }),
-          online_status: fc.constant('online'),
+          fw_version: fc.string({ minLength: 1 }),
+          online_status: fc.constant({ v: 'online' }),
         }),
         async (device) => {
           vi.useFakeTimers();
@@ -279,9 +280,9 @@ describe('Property 14: AccessoryInformation fields are populated from device dat
           const accessory = createMockAccessory(device);
 
           platform.phynApi.getDeviceState.mockResolvedValue({
-            device_id: device.device_id, sov_status: 'Open' as const,
+            device_id: device.device_id, sov_status: { v: 'Open' as const },
             flow: { mean: 0 }, pressure: { mean: 0 }, temperature: { mean: 68 },
-            online_status: 'online',
+            online_status: { v: 'online' },
           });
 
           new PPAccessory(platform as any, accessory as any);
@@ -300,7 +301,7 @@ describe('Property 14: AccessoryInformation fields are populated from device dat
             manufacturerCall?.[1] === 'Phyn' &&
             modelCall?.[1] === device.product_code &&
             serialCall?.[1] === device.serial_number &&
-            firmwareCall?.[1] === device.firmware_version
+            firmwareCall?.[1] === device.fw_version
           );
         },
       ),
@@ -327,15 +328,15 @@ describe('Property 18: MQTT message updates characteristics immediately', () => 
           const accessory = createMockAccessory(device);
 
           platform.phynApi.getDeviceState.mockResolvedValue({
-            device_id: device.device_id, sov_status: 'Open' as const,
+            device_id: device.device_id, sov_status: { v: 'Open' },
             flow: { mean: 0 }, pressure: { mean: 0 }, temperature: { mean: 68 },
-            online_status: 'online',
+            online_status: { v: 'online' },
           });
 
           const pp = new PPAccessory(platform as any, accessory as any);
 
           // Simulate MQTT message
-          const payload = { sov_status: sovStatus };
+          const payload = { sov_state: sovStatus };
           pp.updateFromMqtt(payload);
 
           const valveSvc = accessory._services.get('Valve');
@@ -370,14 +371,14 @@ describe('Property 18: MQTT message updates characteristics immediately', () => 
           const accessory = createMockAccessory(device);
 
           platform.phynApi.getDeviceState.mockResolvedValue({
-            device_id: device.device_id, sov_status: 'Open' as const,
+            device_id: device.device_id, sov_status: { v: 'Open' },
             flow: { mean: 0 }, pressure: { mean: 0 }, temperature: { mean: 68 },
-            online_status: 'online',
+            online_status: { v: 'online' },
           });
 
           const pp = new PPAccessory(platform as any, accessory as any);
 
-          const payload = { temperature: { mean: tempF } };
+          const payload = { sensor_data: { temperature: { mean: tempF } } };
           pp.updateFromMqtt(payload);
 
           const tempSvc = accessory._services.get('TemperatureSensor');
@@ -421,11 +422,11 @@ describe('Property 21: Polling updates all characteristics from device state', (
 
           const state: any = {
             device_id: device.device_id,
-            sov_status,
+            sov_status: { v: sov_status },
             flow: { mean: flowMean },
             pressure: { mean: 50 },
             temperature: { mean: tempF },
-            online_status: 'online',
+            online_status: { v: 'online' },
             alerts: { is_leak: isLeak },
           };
           platform.phynApi.getDeviceState.mockResolvedValue(state);
@@ -530,9 +531,9 @@ describe('Property 23: Firmware polled on correct cycle cadence', () => {
     const accessory = createMockAccessory(device);
 
     const state = {
-      device_id: device.device_id, sov_status: 'Open' as const,
+      device_id: device.device_id, sov_status: { v: 'Open' as const },
       flow: { mean: 0 }, pressure: { mean: 0 }, temperature: { mean: 68 },
-      online_status: 'online',
+      online_status: { v: 'online' },
     };
     platform.phynApi.getDeviceState.mockResolvedValue(state);
 
@@ -589,22 +590,24 @@ describe('Property 24: Away mode and auto-shutoff On/Off map to correct API call
           const accessory = createMockAccessory(device);
 
           platform.phynApi.getDeviceState.mockResolvedValue({
-            device_id: device.device_id, sov_status: 'Open' as const,
+            device_id: device.device_id, sov_status: { v: 'Open' as const },
             flow: { mean: 0 }, pressure: { mean: 0 }, temperature: { mean: 68 },
-            online_status: 'online',
+            online_status: { v: 'online' },
           });
 
           const pp = new PPAccessory(platform as any, accessory as any);
-          platform.phynApi.setPreferences.mockClear();
+          platform.phynApi.setDevicePreferences.mockClear();
 
           await (pp as any).setAwayMode(awayMode);
 
-          const calls = platform.phynApi.setPreferences.mock.calls;
+          const calls = platform.phynApi.setDevicePreferences.mock.calls;
           vi.useRealTimers();
           return (
             calls.length === 1 &&
             calls[0][0] === device.device_id &&
-            calls[0][1].away_mode === awayMode
+            Array.isArray(calls[0][1]) &&
+            calls[0][1][0]?.name === 'leak_sensitivity_away_mode' &&
+            calls[0][1][0]?.value === (awayMode ? 'true' : 'false')
           );
         },
       ),
@@ -625,29 +628,23 @@ describe('Property 24: Away mode and auto-shutoff On/Off map to correct API call
           const accessory = createMockAccessory(device);
 
           platform.phynApi.getDeviceState.mockResolvedValue({
-            device_id: device.device_id, sov_status: 'Open' as const,
+            device_id: device.device_id, sov_status: { v: 'Open' as const },
             flow: { mean: 0 }, pressure: { mean: 0 }, temperature: { mean: 68 },
-            online_status: 'online',
+            online_status: { v: 'online' },
           });
 
           const pp = new PPAccessory(platform as any, accessory as any);
-          platform.phynApi.enableAutoShutoff.mockClear();
-          platform.phynApi.disableAutoShutoff.mockClear();
+          platform.phynApi.setAutoShutoffEnabled.mockClear();
 
           await (pp as any).setAutoShutoff(enable);
 
           vi.useRealTimers();
-          if (enable) {
-            return (
-              platform.phynApi.enableAutoShutoff.mock.calls.length === 1 &&
-              platform.phynApi.disableAutoShutoff.mock.calls.length === 0
-            );
-          } else {
-            return (
-              platform.phynApi.disableAutoShutoff.mock.calls.length === 1 &&
-              platform.phynApi.enableAutoShutoff.mock.calls.length === 0
-            );
-          }
+          const calls = platform.phynApi.setAutoShutoffEnabled.mock.calls;
+          return (
+            calls.length === 1 &&
+            calls[0][0] === device.device_id &&
+            calls[0][1] === enable
+          );
         },
       ),
       { numRuns: 20 },
@@ -677,8 +674,9 @@ function createMockPlatformPC(apiOverrides: any = {}) {
   const phynApi: any = {
     getDeviceState: vi.fn().mockResolvedValue({
       device_id: 'dev-pc-001',
-      temperature: { mean: 68 },
-      online_status: 'online',
+      temperature1: { mean: 68 },
+      temperature2: { mean: 65 },
+      online_status: { v: 'online' },
     }),
     ...apiOverrides,
   };
@@ -785,8 +783,9 @@ describe('Property 15: Offline device sets StatusFault on all services', () => {
 
           const state: any = {
             device_id: device.device_id,
-            temperature: { mean: 68 },
-            online_status: offlineStatus,
+            temperature1: { mean: 68 },
+            temperature2: { mean: 65 },
+            online_status: { v: offlineStatus },
           };
           pc.updateFromState(state);
 
@@ -826,8 +825,8 @@ describe('Property 14: AccessoryInformation fields are populated from device dat
           device_id: fc.string({ minLength: 1 }),
           product_code: fc.string({ minLength: 1 }),
           serial_number: fc.string({ minLength: 1 }),
-          firmware_version: fc.string({ minLength: 1 }),
-          online_status: fc.constant('online'),
+          fw_version: fc.string({ minLength: 1 }),
+          online_status: fc.constant({ v: 'online' }),
         }),
         async (device) => {
           vi.useFakeTimers();
@@ -850,7 +849,7 @@ describe('Property 14: AccessoryInformation fields are populated from device dat
             manufacturerCall?.[1] === 'Phyn' &&
             modelCall?.[1] === device.product_code &&
             serialCall?.[1] === device.serial_number &&
-            firmwareCall?.[1] === device.firmware_version
+            firmwareCall?.[1] === device.fw_version
           );
         },
       ),
@@ -888,14 +887,15 @@ function createMockPlatformPW(apiOverrides: any = {}) {
   const phynApi: any = {
     getDeviceState: vi.fn().mockResolvedValue({
       device_id: 'dev-pw-001',
-      online_status: 'online',
-      alerts: { water_detected: false },
+      online_status: { v: 'online' },
     }),
-    getWaterStatistics: vi.fn().mockResolvedValue({
-      temperature: 68,
-      humidity: 50,
+    getWaterStatistics: vi.fn().mockResolvedValue([{
+      ts: Date.now(),
+      temperature: [{ value: 68 }],
+      humidity: [{ value: 50 }],
       battery_level: 80,
-    }),
+      alerts: { water_detected: false },
+    }]),
     ...apiOverrides,
   };
 
@@ -927,13 +927,18 @@ describe('Property 13: Leak detection maps correctly to LeakDetected (PW)', () =
 
           const state: any = {
             device_id: device.device_id,
-            online_status: 'online',
+            online_status: { v: 'online' },
+          };
+          const stats: any = {
+            ts: Date.now(),
+            temperature: [{ value: 68 }],
+            humidity: [{ value: 50 }],
+            battery_level: 80,
             alerts: { water_detected: waterDetected },
           };
-          const stats: any = { temperature: 68, humidity: 50, battery_level: 80 };
 
           platform.phynApi.getDeviceState.mockResolvedValue(state);
-          platform.phynApi.getWaterStatistics.mockResolvedValue(stats);
+          platform.phynApi.getWaterStatistics.mockResolvedValue([stats]);
 
           const pw = new PWAccessory(platform as any, accessory as any);
           pw.updateFromState(state, stats);
@@ -977,13 +982,18 @@ describe('Property 16: Battery low threshold boundary', () => {
 
           const state: any = {
             device_id: device.device_id,
-            online_status: 'online',
+            online_status: { v: 'online' },
+          };
+          const stats: any = {
+            ts: Date.now(),
+            temperature: [{ value: 68 }],
+            humidity: [{ value: 50 }],
+            battery_level: batteryLevel,
             alerts: { water_detected: false },
           };
-          const stats: any = { temperature: 68, humidity: 50, battery_level: batteryLevel };
 
           platform.phynApi.getDeviceState.mockResolvedValue(state);
-          platform.phynApi.getWaterStatistics.mockResolvedValue(stats);
+          platform.phynApi.getWaterStatistics.mockResolvedValue([stats]);
 
           const pw = new PWAccessory(platform as any, accessory as any);
           pw.updateFromState(state, stats);
@@ -1022,8 +1032,8 @@ describe('Property 14: AccessoryInformation fields are populated from device dat
           device_id: fc.string({ minLength: 1 }),
           product_code: fc.string({ minLength: 1 }),
           serial_number: fc.string({ minLength: 1 }),
-          firmware_version: fc.string({ minLength: 1 }),
-          online_status: fc.constant('online'),
+          fw_version: fc.string({ minLength: 1 }),
+          online_status: fc.constant({ v: 'online' }),
         }),
         async (device) => {
           vi.useFakeTimers();
@@ -1046,7 +1056,7 @@ describe('Property 14: AccessoryInformation fields are populated from device dat
             manufacturerCall?.[1] === 'Phyn' &&
             modelCall?.[1] === device.product_code &&
             serialCall?.[1] === device.serial_number &&
-            firmwareCall?.[1] === device.firmware_version
+            firmwareCall?.[1] === device.fw_version
           );
         },
       ),

@@ -7,66 +7,92 @@ export interface PhynConfig extends PlatformConfig {
   pollingInterval?: number;
 }
 
-export interface PhynHome {
-  id: string;
-  name: string;
-}
-
 export interface PhynDevice {
   device_id: string;
   product_code: string;
   serial_number: string;
-  firmware_version: string;
-  online_status: 'online' | 'offline' | string;
+  fw_version: string;
+  online_status: { v: string };
+}
+
+export interface PhynHome {
+  id: string;
+  name: string;
+  devices: PhynDevice[];
+}
+
+// Device state fields use {v, ts} or {mean} shapes
+export interface PhynValueField {
+  v?: number;
+  mean?: number;
+  ts?: number;
 }
 
 export interface PhynDeviceState {
-  device_id: string;
-  sov_status: 'Open' | 'Close';
-  flow: { mean: number };
-  pressure: { mean: number };
-  temperature: { mean: number };
-  online_status: string;
+  device_id?: string;
+  sov_status: { v: string };
+  flow?: PhynValueField;
+  pressure?: PhynValueField;
+  temperature?: PhynValueField;
+  online_status?: { v: string };
+  fw_version?: string;
+  serial_number?: string;
+  product_code?: string;
+  // Phyn Classic dual-line fields
+  pressure1?: PhynValueField;
+  pressure2?: PhynValueField;
+  temperature1?: PhynValueField;
+  temperature2?: PhynValueField;
   alerts?: {
-    water_detected?: boolean;
     is_leak?: boolean;
   };
-  away_mode?: boolean;
 }
 
 export interface PhynWaterStats {
-  temperature: number;
-  humidity: number;
-  battery_level: number;
+  ts?: number;
+  temperature?: Array<{ value: number }>;
+  humidity?: Array<{ value: number }>;
+  battery_level?: number;
+  alerts?: {
+    water_detected?: boolean;
+    high_humidity?: boolean;
+    low_humidity?: boolean;
+    low_temperature?: boolean;
+    water?: boolean;
+  };
 }
 
 export interface PhynConsumption {
-  daily_gallons: number;
+  water_consumption?: number;
 }
 
 export interface PhynAutoShutoff {
-  enabled: boolean;
+  auto_shutoff_enable: boolean;
 }
 
 export interface PhynHealthTest {
-  is_leak: boolean;
-  test_time: string;
+  data: Array<{
+    end_time: number;
+    is_leak: boolean;
+    is_warn: boolean;
+  }>;
 }
 
 export interface PhynFirmware {
-  version: string;
-}
-
-export interface PhynIotPolicy {
-  wss_url: string;
-  user_id: string;
+  fw_version: string;
+  fw_img_name?: string;
+  product_code?: string;
+  release_notes?: string;
 }
 
 export interface PhynMqttPayload {
   device_id?: string;
-  sov_status?: 'Open' | 'Close';
-  flow?: { mean: number };
-  pressure?: { mean: number };
-  temperature?: { mean: number };
-  alerts?: { water_detected?: boolean; is_leak?: boolean };
+  sov_state?: string;
+  flow?: PhynValueField;
+  sensor_data?: {
+    pressure?: PhynValueField;
+    temperature?: PhynValueField;
+  };
+  consumption?: { v: number };
+  flow_state?: { v: string };
 }

@@ -68,13 +68,7 @@ export class PhynPlatform implements DynamicPlatformPlugin {
       const discoveredUUIDs: string[] = [];
 
       for (const home of homes) {
-        let devices;
-        try {
-          devices = await this.phynApi.getDevices(home.id);
-        } catch (err) {
-          this.log.error(`Failed to get devices for home ${home.id}: ${(err as Error).message}`);
-          continue;
-        }
+        const devices = home.devices ?? [];
 
         for (const device of devices) {
           const uuid = this.api.hap.uuid.generate(device.device_id);
@@ -132,7 +126,7 @@ export class PhynPlatform implements DynamicPlatformPlugin {
         const iotPolicy = await this.phynApi.getIotPolicy(userId);
         await this.mqttClient.connect(iotPolicy.wss_url);
       } catch (err) {
-        this.log.error(`Failed to connect MQTT: ${(err as Error).message}`);
+        this.log.warn(`Failed to connect MQTT (real-time updates disabled): ${(err as Error).message}`);
       }
 
     } catch (err) {

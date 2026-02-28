@@ -11,7 +11,6 @@ vi.mock('../../src/api/phynApi.js', () => ({
   PhynApi: vi.fn().mockImplementation(() => ({
     authenticate: vi.fn().mockResolvedValue(undefined),
     getHomes: vi.fn().mockResolvedValue([]),
-    getDevices: vi.fn().mockResolvedValue([]),
     getIotPolicy: vi.fn().mockResolvedValue({ wss_url: 'wss://test', user_id: 'user1' }),
   })),
   AuthError: class AuthError extends Error {},
@@ -126,7 +125,6 @@ describe('Property 2: Config validation rejects invalid brand', () => {
       (PhynApi as any).mockImplementation(() => ({
         authenticate: vi.fn().mockResolvedValue(undefined),
         getHomes: vi.fn().mockResolvedValue([]),
-        getDevices: vi.fn().mockResolvedValue([]),
         getIotPolicy: vi.fn().mockResolvedValue({ wss_url: 'wss://test', user_id: 'user1' }),
       }));
 
@@ -225,24 +223,28 @@ describe('Property 6: UUID derivation is deterministic', () => {
   });
 });
 
-// Feature: homebridge-phyn-plugin, Property 7: Device discovery calls getDevices for every home
+// Feature: homebridge-phyn-plugin, Property 7: Device discovery reads devices from home objects
 // Validates: Requirements 3.2
-describe('Property 7: Device discovery calls getDevices for every home', () => {
-  it('getDevices is called exactly N times for N homes', async () => {
+describe('Property 7: Device discovery reads devices from home objects', () => {
+  it('devices embedded in homes are registered as accessories', async () => {
     const { PhynApi } = await import('../../src/api/phynApi.js');
     const { PhynPlatform } = await import('../../src/platform.js');
 
     await fc.assert(
       fc.asyncProperty(
         fc.array(fc.string({ minLength: 1 }), { minLength: 1, maxLength: 5 }),
-        async (homeIds) => {
+        async (deviceIds) => {
           vi.clearAllMocks();
-          const homes = homeIds.map((id) => ({ id, name: `Home ${id}` }));
-          const mockGetDevices = vi.fn().mockResolvedValue([]);
+          const devices = deviceIds.map((id) => ({
+            device_id: id,
+            product_code: 'PP21',
+            serial_number: `SN-${id}`,
+            fw_version: '1.0',
+            online_status: { v: 'online' },
+          }));
           (PhynApi as any).mockImplementation(() => ({
             authenticate: vi.fn().mockResolvedValue(undefined),
-            getHomes: vi.fn().mockResolvedValue(homes),
-            getDevices: mockGetDevices,
+            getHomes: vi.fn().mockResolvedValue([{ id: 'home1', name: 'Home', devices }]),
             getIotPolicy: vi.fn().mockResolvedValue({ wss_url: 'wss://test', user_id: 'user1' }),
           }));
 
@@ -252,7 +254,9 @@ describe('Property 7: Device discovery calls getDevices for every home', () => {
           const platform = new PhynPlatform(log as any, config as any, api as any);
           await platform.discoverDevices();
 
-          return mockGetDevices.mock.calls.length === homeIds.length;
+          // Each device should have been registered
+          const registeredCount = (api.registerPlatformAccessories as any).mock.calls.length;
+          return registeredCount === deviceIds.length;
         },
       ),
       { numRuns: 10 },
@@ -274,14 +278,16 @@ describe('Property 8: No duplicate accessories on re-discovery', () => {
       device_id: deviceId,
       product_code: 'PP21',
       serial_number: 'SN1',
-      firmware_version: '1.0',
-      online_status: 'online',
+      fw_version: '1.0',
+      online_status: { v: 'online' },
     };
 
     (PhynApi as any).mockImplementation(() => ({
       authenticate: vi.fn().mockResolvedValue(undefined),
-      getHomes: vi.fn().mockResolvedValue([{ id: 'home1', name: 'Home' }]),
-      getDevices: vi.fn().mockResolvedValue([device]),
+      getHomes: vi.fn().mockResolvedValue([{
+        id: 'home1', name: 'Home',
+        devices: [device],
+      }]),
       getIotPolicy: vi.fn().mockResolvedValue({ wss_url: 'wss://test', user_id: 'user1' }),
     }));
 
@@ -319,8 +325,7 @@ describe('Property 9: Stale accessories are unregistered', () => {
     vi.clearAllMocks();
     (PhynApi as any).mockImplementation(() => ({
       authenticate: vi.fn().mockResolvedValue(undefined),
-      getHomes: vi.fn().mockResolvedValue([{ id: 'home1', name: 'Home' }]),
-      getDevices: vi.fn().mockResolvedValue([]), // No devices returned
+      getHomes: vi.fn().mockResolvedValue([{ id: 'home1', name: 'Home', devices: [] }]),
       getIotPolicy: vi.fn().mockResolvedValue({ wss_url: 'wss://test', user_id: 'user1' }),
     }));
 
@@ -362,14 +367,13 @@ describe('Property 9: Stale accessories are unregistered', () => {
       device_id: deviceId,
       product_code: 'PP21',
       serial_number: 'SN1',
-      firmware_version: '1.0',
-      online_status: 'online',
+      fw_version: '1.0',
+      online_status: { v: 'online' },
     };
 
     (PhynApi as any).mockImplementation(() => ({
       authenticate: vi.fn().mockResolvedValue(undefined),
-      getHomes: vi.fn().mockResolvedValue([{ id: 'home1', name: 'Home' }]),
-      getDevices: vi.fn().mockResolvedValue([device]),
+      getHomes: vi.fn().mockResolvedValue([{ id: 'home1', name: 'Home', devices: [device] }]),
       getIotPolicy: vi.fn().mockResolvedValue({ wss_url: 'wss://test', user_id: 'user1' }),
     }));
 

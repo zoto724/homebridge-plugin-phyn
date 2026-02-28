@@ -21,7 +21,7 @@ export class PWAccessory {
       .setCharacteristic(Characteristic.Manufacturer, 'Phyn')
       .setCharacteristic(Characteristic.Model, device.product_code)
       .setCharacteristic(Characteristic.SerialNumber, device.serial_number)
-      .setCharacteristic(Characteristic.FirmwareRevision, device.firmware_version);
+      .setCharacteristic(Characteristic.FirmwareRevision, device.fw_version ?? '');
 
     // LeakSensor service
     const leakService = this.accessory.getService(Service.LeakSensor)
@@ -61,31 +61,40 @@ export class PWAccessory {
 
   private async getLeakDetected() {
     const { Characteristic } = this.platform;
-    if (!this.currentState) return Characteristic.LeakDetected.LEAK_NOT_DETECTED;
-    return this.currentState.alerts?.water_detected
+    if (!this.currentStats) return Characteristic.LeakDetected.LEAK_NOT_DETECTED;
+    return this.currentStats.alerts?.water_detected || this.currentStats.alerts?.water
       ? Characteristic.LeakDetected.LEAK_DETECTED
       : Characteristic.LeakDetected.LEAK_NOT_DETECTED;
   }
 
   private async getCurrentTemperature(): Promise<number> {
     if (!this.currentStats) return 0;
-    return fahrenheitToCelsius(this.currentStats.temperature);
+    const tempData = this.currentStats.temperature;
+    if (tempData && tempData.length > 0) {
+      return fahrenheitToCelsius(tempData[0].value);
+    }
+    return 0;
   }
 
   private async getCurrentHumidity(): Promise<number> {
     if (!this.currentStats) return 0;
-    return this.currentStats.humidity;
+    const humData = this.currentStats.humidity;
+    if (humData && humData.length > 0) {
+      return humData[0].value;
+    }
+    return 0;
   }
 
   private async getBatteryLevel(): Promise<number> {
     if (!this.currentStats) return 100;
-    return this.currentStats.battery_level;
+    return this.currentStats.battery_level ?? 100;
   }
 
   private async getStatusLowBattery() {
     const { Characteristic } = this.platform;
     if (!this.currentStats) return Characteristic.StatusLowBattery.BATTERY_LEVEL_NORMAL;
-    return this.currentStats.battery_level < LOW_BATTERY_THRESHOLD
+    const level = this.currentStats.battery_level ?? 100;
+    return level < LOW_BATTERY_THRESHOLD
       ? Characteristic.StatusLowBattery.BATTERY_LEVEL_LOW
       : Characteristic.StatusLowBattery.BATTERY_LEVEL_NORMAL;
   }
@@ -93,11 +102,20 @@ export class PWAccessory {
   private async poll(): Promise<void> {
     const device = this.accessory.context.device;
     try {
-      const [state, stats] = await Promise.all([
+      const toTs = Date.now();
+      const fromTs = toTs - (3600 * 72 * 1000); // 72 hours back
+      const [state, statsArray] = await Promise.all([
         this.platform.phynApi.getDeviceState(device.device_id),
-        this.platform.phynApi.getWaterStatistics(device.device_id),
+        this.platform.phynApi.getWaterStatistics(device.device_id, fromTs, toTs),
       ]);
-      this.updateFromState(state, stats);
+      // Pick the most recent entry
+      const stats = statsArray.reduce((latest, entry) =>
+        (entry.ts ?? 0) > (latest.ts ?? 0) ? entry : latest,
+        statsArray[0] ?? null,
+      );
+      if (stats) {
+        this.updateFromState(state, stats);
+      }
     } catch (err) {
       this.platform.log.warn(`Polling failed for ${device.device_id}: ${(err as Error).message}`);
     }
@@ -108,35 +126,40 @@ export class PWAccessory {
     this.currentState = state;
     this.currentStats = stats;
 
-    // LeakSensor
+    // LeakSensor — water_detected is in alerts
     const leakService = this.accessory.getService(Service.LeakSensor);
     if (leakService) {
-      const leakDetected = state.alerts?.water_detected
+      const leakDetected = stats.alerts?.water_detected || stats.alerts?.water
         ? Characteristic.LeakDetected.LEAK_DETECTED
         : Characteristic.LeakDetected.LEAK_NOT_DETECTED;
       leakService.updateCharacteristic(Characteristic.LeakDetected, leakDetected);
     }
 
-    // TemperatureSensor
+    // TemperatureSensor — temperature is an array of {value}
     const tempService = this.accessory.getService(Service.TemperatureSensor);
     if (tempService) {
+      const tempData = stats.temperature;
+      const tempF = tempData && tempData.length > 0 ? tempData[0].value : 32;
       tempService.updateCharacteristic(
         Characteristic.CurrentTemperature,
-        fahrenheitToCelsius(stats.temperature),
+        fahrenheitToCelsius(tempF),
       );
     }
 
-    // HumiditySensor
+    // HumiditySensor — humidity is an array of {value}
     const humidityService = this.accessory.getService(Service.HumiditySensor);
     if (humidityService) {
-      humidityService.updateCharacteristic(Characteristic.CurrentRelativeHumidity, stats.humidity);
+      const humData = stats.humidity;
+      const humVal = humData && humData.length > 0 ? humData[0].value : 0;
+      humidityService.updateCharacteristic(Characteristic.CurrentRelativeHumidity, humVal);
     }
 
     // Battery
     const batteryService = this.accessory.getService(Service.Battery);
     if (batteryService) {
-      batteryService.updateCharacteristic(Characteristic.BatteryLevel, stats.battery_level);
-      const lowBattery = stats.battery_level < LOW_BATTERY_THRESHOLD
+      const level = stats.battery_level ?? 100;
+      batteryService.updateCharacteristic(Characteristic.BatteryLevel, level);
+      const lowBattery = level < LOW_BATTERY_THRESHOLD
         ? Characteristic.StatusLowBattery.BATTERY_LEVEL_LOW
         : Characteristic.StatusLowBattery.BATTERY_LEVEL_NORMAL;
       batteryService.updateCharacteristic(Characteristic.StatusLowBattery, lowBattery);

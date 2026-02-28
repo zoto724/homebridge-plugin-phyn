@@ -84,14 +84,15 @@ function createMockPlatform(apiOverrides: any = {}) {
   const phynApi: any = {
     getDeviceState: vi.fn().mockResolvedValue({
       device_id: 'dev-pw-001',
-      online_status: 'online',
-      alerts: { water_detected: false },
+      online_status: { v: 'online' },
     }),
-    getWaterStatistics: vi.fn().mockResolvedValue({
-      temperature: 68,
-      humidity: 50,
+    getWaterStatistics: vi.fn().mockResolvedValue([{
+      ts: Date.now(),
+      temperature: [{ value: 68 }],
+      humidity: [{ value: 50 }],
       battery_level: 80,
-    }),
+      alerts: { water_detected: false },
+    }]),
     ...apiOverrides,
   };
 
@@ -108,8 +109,8 @@ const defaultDevice = {
   device_id: 'dev-pw-001',
   product_code: 'PW21',
   serial_number: 'SN-PW-001',
-  firmware_version: '1.5.0',
-  online_status: 'online',
+  fw_version: '1.5.0',
+  online_status: { v: 'online' },
 };
 
 // ---------------------------------------------------------------------------
@@ -276,7 +277,7 @@ describe('PWAccessory', () => {
       expect(serialCall?.[1]).toBe(defaultDevice.serial_number);
     });
 
-    it('sets FirmwareRevision to device firmware_version', () => {
+    it('sets FirmwareRevision to device fw_version', () => {
       const platform = createMockPlatform();
       const accessory = createMockAccessory(defaultDevice);
 
@@ -285,7 +286,7 @@ describe('PWAccessory', () => {
       const infoSvc = accessory._services.get('AccessoryInformation');
       const calls: any[][] = infoSvc.setCharacteristic.mock.calls;
       const firmwareCall = calls.find((c) => c[0] === platform.Characteristic.FirmwareRevision);
-      expect(firmwareCall?.[1]).toBe(defaultDevice.firmware_version);
+      expect(firmwareCall?.[1]).toBe(defaultDevice.fw_version);
     });
   });
 });

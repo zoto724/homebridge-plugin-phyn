@@ -80,7 +80,7 @@ describe('PhynApi', () => {
       expect(axios.request).toHaveBeenCalledWith(
         expect.objectContaining({
           headers: expect.objectContaining({
-            Authorization: 'Bearer access-token',
+            Authorization: 'Bearer id-token',
           }),
         }),
       );
