@@ -1,0 +1,45 @@
+{
+  "pluginAlias": "PhynPlatform",
+  "pluginType": "platform",
+  "singular": true,
+  "schema": {
+    "type": "object",
+    "properties": {
+      "name": {
+        "title": "Name",
+        "type": "string",
+        "default": "Phyn"
+      },
+      "username": {
+        "title": "Username",
+        "type": "string",
+        "required": true,
+        "description": "Your Phyn account email address"
+      },
+      "password": {
+        "title": "Password",
+        "type": "string",
+        "required": true,
+        "description": "Your Phyn account password"
+      },
+      "brand": {
+        "title": "Brand",
+        "type": "string",
+        "default": "phyn",
+        "oneOf": [
+          { "title": "Phyn", "enum": ["phyn"] },
+          { "title": "Kohler", "enum": ["kohler"] }
+        ],
+        "description": "Device brand (phyn or kohler)"
+      },
+      "pollingInterval": {
+        "title": "Polling Interval",
+        "type": "integer",
+        "default": 60,
+        "minimum": 10,
+        "description": "How often (in seconds) to poll the Phyn API for device state updates"
+      }
+    },
+    "required": ["username", "password"]
+  }
+}
