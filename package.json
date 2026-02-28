@@ -2,6 +2,7 @@
   "name": "homebridge-phyn",
   "version": "1.0.0",
   "description": "Homebridge plugin for Phyn water monitoring devices",
+  "author": "Aaron Hunnewell",
   "main": "dist/index.js",
   "type": "module",
   "scripts": {
