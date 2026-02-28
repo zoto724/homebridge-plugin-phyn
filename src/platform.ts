@@ -84,7 +84,7 @@ export class PhynPlatform implements DynamicPlatformPlugin {
             accessory = existingAccessory;
           } else {
             this.log.info(`Adding new accessory: ${device.device_id}`);
-            accessory = new this.api.platformAccessory(device.device_id, uuid);
+            accessory = new this.api.platformAccessory(`Phyn ${device.product_code} (${device.device_id})`, uuid);
             accessory.context.device = device;
             this.api.registerPlatformAccessories(PLUGIN_NAME, PLATFORM_NAME, [accessory]);
             this.accessories.set(uuid, accessory);
