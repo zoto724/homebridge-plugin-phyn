@@ -12,11 +12,11 @@ A [Homebridge](https://homebridge.io) plugin for [Phyn](https://www.phyn.com) wa
 
 ## Installation
 
-```bash
-npm install -g homebridge-phyn
-```
+This package is not yet published to npm. To install locally, clone the repo and run:
 
-Or install via the Homebridge UI by searching for `homebridge-phyn`.
+```bash
+npm install -g .
+```
 
 ## Configuration
 
