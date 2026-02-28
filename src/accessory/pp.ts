@@ -26,7 +26,7 @@ export class PPAccessory {
     // Valve service
     const valveService = this.accessory.getService(Service.Valve)
       || this.accessory.addService(Service.Valve);
-    valveService.setCharacteristic(Characteristic.ValveType, Characteristic.ValveType.WATER);
+    valveService.setCharacteristic(Characteristic.ValveType, Characteristic.ValveType.WATER_FAUCET);
     valveService.getCharacteristic(Characteristic.Active)
       .onGet(() => this.getActive())
       .onSet((value) => this.setActive(value));
