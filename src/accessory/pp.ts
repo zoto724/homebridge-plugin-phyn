@@ -26,6 +26,7 @@ export class PPAccessory {
     // Valve service
     const valveService = this.accessory.getService(Service.Valve)
       || this.accessory.addService(Service.Valve);
+    valveService.setCharacteristic(Characteristic.Name, 'Water Valve');
     valveService.setCharacteristic(Characteristic.ValveType, Characteristic.ValveType.WATER_FAUCET);
     valveService.getCharacteristic(Characteristic.Active)
       .onGet(() => this.getActive())
@@ -36,18 +37,21 @@ export class PPAccessory {
     // LeakSensor service
     const leakService = this.accessory.getService(Service.LeakSensor)
       || this.accessory.addService(Service.LeakSensor);
+    leakService.setCharacteristic(Characteristic.Name, 'Leak Sensor');
     leakService.getCharacteristic(Characteristic.LeakDetected)
       .onGet(() => this.getLeakDetected());
 
     // TemperatureSensor service
     const tempService = this.accessory.getService(Service.TemperatureSensor)
       || this.accessory.addService(Service.TemperatureSensor);
+    tempService.setCharacteristic(Characteristic.Name, 'Water Temperature');
     tempService.getCharacteristic(Characteristic.CurrentTemperature)
       .onGet(() => this.getCurrentTemperature());
 
     // Switch "Away Mode"
     const awayModeService = this.accessory.getService('Away Mode')
       || this.accessory.addService(Service.Switch, 'Away Mode', 'away-mode');
+    awayModeService.setCharacteristic(Characteristic.Name, 'Away Mode');
     awayModeService.getCharacteristic(Characteristic.On)
       .onGet(() => this.getAwayMode())
       .onSet((value) => this.setAwayMode(value));
@@ -55,6 +59,7 @@ export class PPAccessory {
     // Switch "Auto Shutoff"
     const autoShutoffService = this.accessory.getService('Auto Shutoff')
       || this.accessory.addService(Service.Switch, 'Auto Shutoff', 'auto-shutoff');
+    autoShutoffService.setCharacteristic(Characteristic.Name, 'Auto Shutoff');
     autoShutoffService.getCharacteristic(Characteristic.On)
       .onGet(() => this.getAutoShutoff())
       .onSet((value) => this.setAutoShutoff(value));
