@@ -4,11 +4,11 @@ A [Homebridge](https://homebridge.io) plugin for [Phyn](https://www.phyn.com) wa
 
 ## Supported Devices
 
-| Product Code Prefix | Device | HomeKit Services |
-|---|---|---|
-| `PP` | Phyn Plus (smart water shutoff) | Valve, Leak Sensor, Temperature Sensor, Away Mode switch, Auto Shutoff switch |
-| `PC` | Phyn Plus Clamp | Hot Water Temperature Sensor, Cold Water Temperature Sensor |
-| `PW` | Phyn Water Sensor | Leak Sensor, Temperature Sensor, Humidity Sensor, Battery |
+| Product Code Prefix | Device | HomeKit Services | tested? |
+|---|---|---|---|
+| `PP` | Phyn Plus (smart water shutoff) | Valve, Leak Sensor, Temperature Sensor, Away Mode switch, Auto Shutoff switch | YES |
+| `PC` | Phyn Plus Clamp | Hot Water Temperature Sensor, Cold Water Temperature Sensor | NO |
+| `PW` | Phyn Water Sensor | Leak Sensor, Temperature Sensor, Humidity Sensor, Battery | YES |
 
 ## Installation
 
