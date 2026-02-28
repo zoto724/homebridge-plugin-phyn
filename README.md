@@ -12,15 +12,20 @@ A [Homebridge](https://homebridge.io) plugin for [Phyn](https://www.phyn.com) wa
 
 ## Installation
 
-This package is not yet published to npm. To install locally, clone the repo and run:
+This package is not yet published to npm. To install locally, clone the repo, build, then install:
 
 ```bash
+npm run build
 npm install -g .
 ```
 
+Then restart Homebridge.
+
 ## Configuration
 
-Add the platform to your Homebridge `config.json`:
+You can configure the plugin through the Homebridge web UI — go to the Plugins tab, find Phyn, and click Settings.
+
+Alternatively, add the platform manually to your Homebridge `config.json`:
 
 ```json
 {
@@ -69,7 +74,7 @@ npm run build
 npm test
 ```
 
-Tests use [Vitest](https://vitest.dev) with [fast-check](https://fast-check.dev) for property-based testing. There are 133 tests across unit and property test suites covering all three accessory types, the platform, the API client, and the MQTT client.
+Tests use [Vitest](https://vitest.dev) with [fast-check](https://fast-check.dev) for property-based testing. There are 136 tests across unit and property test suites covering all three accessory types, the platform, the API client, and the MQTT client.
 
 ## Attribution
 
