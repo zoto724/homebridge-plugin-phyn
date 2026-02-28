@@ -128,15 +128,19 @@ export class PhynApi {
     return this.config['brand'] === 'kohler' ? API_KEY_KOHLER : API_KEY_PHYN;
   }
 
-  private async request<T>(method: string, path: string, body?: unknown, params?: Record<string, unknown>): Promise<T> {
+  private async request<T>(method: string, path: string, body?: unknown, params?: Record<string, unknown>, useIdToken = false): Promise<T> {
     await this.refreshTokenIfNeeded();
     const response = await axios.request<T>({
       method,
       url: `${PHYN_API_BASE}${path}`,
       headers: {
-        Authorization: `Bearer ${this.idToken}`,
+        // aiophyn sends the token directly without "Bearer" prefix
+        // most endpoints use the access token; iot_policy requires the id token
+        Authorization: useIdToken ? this.idToken : this.accessToken,
         'x-api-key': this.apiKey(),
         'Content-Type': 'application/json',
+        'User-Agent': 'phyn/18 CFNetwork/1331.0.7 Darwin/21.4.0',
+        Accept: 'application/json',
       },
       data: body,
       params,
@@ -213,7 +217,8 @@ export class PhynApi {
 
   async getIotPolicy(userId: string): Promise<{ wss_url: string }> {
     const encodedUserId = encodeURIComponent(userId);
-    return this.request<{ wss_url: string }>('POST', `/users/${encodedUserId}/iot_policy`);
+    // aiophyn explicitly uses the id token for this endpoint
+    return this.request<{ wss_url: string }>('POST', `/users/${encodedUserId}/iot_policy`, undefined, undefined, true);
   }
 }
 

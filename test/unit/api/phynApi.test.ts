@@ -80,7 +80,8 @@ describe('PhynApi', () => {
       expect(axios.request).toHaveBeenCalledWith(
         expect.objectContaining({
           headers: expect.objectContaining({
-            Authorization: 'Bearer id-token',
+            // aiophyn sends the access token directly without "Bearer" prefix
+            Authorization: 'access-token',
           }),
         }),
       );
