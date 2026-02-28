@@ -1,5 +1,7 @@
 # homebridge-phyn
 
+!! NOT YET WORKING !!
+
 A [Homebridge](https://homebridge.io) plugin for [Phyn](https://www.phyn.com) water monitoring devices, including Kohler-branded variants.
 
 ## Supported Devices
