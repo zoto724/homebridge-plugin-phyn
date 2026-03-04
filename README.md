@@ -36,7 +36,7 @@ Alternatively, add the platform manually to your Homebridge `config.json`:
       "username": "your@email.com",
       "password": "your-password",
       "brand": "phyn",
-      "pollingInterval": 60
+      "pollingInterval": 3600
     }
   ]
 }
@@ -49,17 +49,19 @@ Alternatively, add the platform manually to your Homebridge `config.json`:
 | `username` | string | yes | — | Your Phyn account email |
 | `password` | string | yes | — | Your Phyn account password |
 | `brand` | `"phyn"` \| `"kohler"` | no | `"phyn"` | Device brand |
-| `pollingInterval` | integer (≥10) | no | `60` | API poll interval in seconds |
+| `pollingInterval` | integer (≥10) | no | `3600` | API poll interval in seconds |
 
 ## How It Works
 
 - Authenticates with the Phyn cloud API via AWS Cognito
 - Discovers all homes and devices associated with your account
+- Re-runs discovery once daily to pick up topology changes
 - Registers each device as a HomeKit accessory based on its product code
-- Polls the API on the configured interval to keep characteristics up to date
+- Polls the API on the configured interval (default hourly) to reduce API traffic
 - Subscribes to real-time MQTT updates over WebSocket for immediate state changes (PP devices)
 - Automatically reconnects MQTT with exponential backoff on disconnect
 - Refreshes auth tokens before they expire
+- Caches PP settings (Away Mode / Auto Shutoff) and refreshes those daily
 
 ## Development
 

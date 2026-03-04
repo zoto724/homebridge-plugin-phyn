@@ -12,8 +12,17 @@ import { MqttClient } from './api/mqttClient.js';
 import { PPAccessory } from './accessory/pp.js';
 import { PCAccessory } from './accessory/pc.js';
 import { PWAccessory } from './accessory/pw.js';
-import { PLATFORM_NAME, PLUGIN_NAME, MQTT_RECOVERY_INTERVAL_MS } from './settings.js';
+import {
+  PLATFORM_NAME,
+  PLUGIN_NAME,
+  MQTT_RECOVERY_INTERVAL_MS,
+  DEVICE_DISCOVERY_INTERVAL_MS,
+} from './settings.js';
 import { detectDeviceType } from './utils.js';
+
+type AccessoryController = {
+  destroy?: () => void;
+};
 
 export class PhynPlatform implements DynamicPlatformPlugin {
   public readonly Service: typeof Service;
@@ -23,7 +32,10 @@ export class PhynPlatform implements DynamicPlatformPlugin {
   public readonly phynApi: PhynApi;
   public readonly mqttClient: MqttClient;
   private mqttRecoveryTimer: ReturnType<typeof setTimeout> | null = null;
+  private discoveryTimer: ReturnType<typeof setInterval> | null = null;
   private mqttRecoveryListenerRegistered = false;
+  private discovering = false;
+  private readonly accessoryControllers: Map<string, AccessoryController> = new Map();
 
   constructor(
     public readonly log: Logging,
@@ -41,6 +53,24 @@ export class PhynPlatform implements DynamicPlatformPlugin {
 
     this.api.on('didFinishLaunching', () => {
       this.discoverDevices();
+      this.scheduleDailyDiscovery();
+    });
+
+    this.api.on('shutdown', () => {
+      if (this.discoveryTimer !== null) {
+        clearInterval(this.discoveryTimer);
+        this.discoveryTimer = null;
+      }
+      if (this.mqttRecoveryTimer !== null) {
+        clearTimeout(this.mqttRecoveryTimer);
+        this.mqttRecoveryTimer = null;
+      }
+      this.mqttClient.disconnect();
+
+      for (const [, controller] of this.accessoryControllers) {
+        controller.destroy?.();
+      }
+      this.accessoryControllers.clear();
     });
   }
 
@@ -50,15 +80,23 @@ export class PhynPlatform implements DynamicPlatformPlugin {
   }
 
   async discoverDevices(): Promise<void> {
+    if (this.discovering) {
+      this.log.debug('Discovery already in progress; skipping overlapping run.');
+      return;
+    }
+    this.discovering = true;
+
     // Config validation
     if (!this.config['username'] || !this.config['password']) {
       this.log.error('Missing username or password in config. Plugin will not initialize.');
+      this.discovering = false;
       return;
     }
 
     const brand = this.config['brand'] as string | undefined;
     if (brand && brand !== 'phyn' && brand !== 'kohler') {
       this.log.error(`Invalid brand "${brand}" in config. Must be "phyn" or "kohler".`);
+      this.discovering = false;
       return;
     }
 
@@ -66,6 +104,7 @@ export class PhynPlatform implements DynamicPlatformPlugin {
       await this.phynApi.authenticate();
     } catch (err) {
       this.log.error(`Authentication failed: ${(err as Error).message}`);
+      this.discovering = false;
       return;
     }
 
@@ -97,18 +136,27 @@ export class PhynPlatform implements DynamicPlatformPlugin {
           }
 
           const deviceType = detectDeviceType(device.product_code);
-          switch (deviceType) {
-            case 'PP':
-              new PPAccessory(this, accessory);
-              break;
-            case 'PC':
-              new PCAccessory(this, accessory);
-              break;
-            case 'PW':
-              new PWAccessory(this, accessory);
-              break;
-            default:
-              this.log.warn(`Unknown device type for product_code: ${device.product_code}`);
+          const existingController = this.accessoryControllers.get(uuid);
+          if (!existingController) {
+            switch (deviceType) {
+              case 'PP': {
+                const controller = new PPAccessory(this, accessory);
+                this.accessoryControllers.set(uuid, controller);
+                break;
+              }
+              case 'PC': {
+                const controller = new PCAccessory(this, accessory);
+                this.accessoryControllers.set(uuid, controller);
+                break;
+              }
+              case 'PW': {
+                const controller = new PWAccessory(this, accessory);
+                this.accessoryControllers.set(uuid, controller);
+                break;
+              }
+              default:
+                this.log.warn(`Unknown device type for product_code: ${device.product_code}`);
+            }
           }
         }
       }
@@ -117,6 +165,8 @@ export class PhynPlatform implements DynamicPlatformPlugin {
       const staleAccessories: PlatformAccessory[] = [];
       for (const [uuid, accessory] of this.accessories) {
         if (!discoveredUUIDs.includes(uuid)) {
+          this.accessoryControllers.get(uuid)?.destroy?.();
+          this.accessoryControllers.delete(uuid);
           staleAccessories.push(accessory);
           this.accessories.delete(uuid);
         }
@@ -154,6 +204,19 @@ export class PhynPlatform implements DynamicPlatformPlugin {
 
     } catch (err) {
       this.log.error(`Device discovery failed: ${(err as Error).message}`);
+    } finally {
+      this.discovering = false;
     }
+  }
+
+  private scheduleDailyDiscovery(): void {
+    if (this.discoveryTimer !== null) {
+      clearInterval(this.discoveryTimer);
+    }
+
+    this.discoveryTimer = setInterval(() => {
+      this.log.info('Running scheduled daily Phyn discovery refresh');
+      this.discoverDevices();
+    }, DEVICE_DISCOVERY_INTERVAL_MS);
   }
 }

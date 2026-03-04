@@ -1,7 +1,11 @@
 import { PlatformAccessory, CharacteristicValue, HAPStatus } from 'homebridge';
 import type { PhynPlatform } from '../platform.js';
 import { fahrenheitToCelsius } from '../utils.js';
-import { DEFAULT_POLLING_INTERVAL, FIRMWARE_POLL_EVERY_N_CYCLES } from '../settings.js';
+import {
+  DEFAULT_POLLING_INTERVAL,
+  FIRMWARE_POLL_EVERY_N_CYCLES,
+  SETTINGS_REFRESH_INTERVAL_MS,
+} from '../settings.js';
 import type { PhynDeviceState, PhynMqttPayload } from '../types.js';
 
 export class PPAccessory {
@@ -10,6 +14,10 @@ export class PPAccessory {
   private currentState: PhynDeviceState | null = null;
   private polling: boolean = false;
   private mqttHandler: ((deviceId: string, payload: PhynMqttPayload) => void) | null = null;
+  private awayModeEnabled: boolean | null = null;
+  private autoShutoffEnabled: boolean | null = null;
+  private lastSettingsRefreshTs: number = 0;
+  private refreshingSettings: boolean = false;
 
   constructor(
     private readonly platform: PhynPlatform,
@@ -80,6 +88,7 @@ export class PPAccessory {
     // Start polling
     const interval = (this.platform.config['pollingInterval'] as number ?? DEFAULT_POLLING_INTERVAL) * 1000;
     this.pollingTimer = setInterval(() => this.poll(), interval);
+    this.refreshCachedSettings();
     // Initial poll
     this.poll();
   }
@@ -133,10 +142,10 @@ export class PPAccessory {
 
   private async getAwayMode(): Promise<CharacteristicValue> {
     try {
-      const device = this.accessory.context.device;
-      const prefs = await this.platform.phynApi.getDevicePreferences(device.device_id);
-      const awayPref = prefs.find(p => p.name === 'leak_sensitivity_away_mode');
-      return awayPref?.value === 'true';
+      if (this.awayModeEnabled === null) {
+        await this.refreshCachedSettings(true);
+      }
+      return this.awayModeEnabled ?? false;
     } catch (err) {
       this.platform.log.error(`Failed to get away mode: ${(err as Error).message}`);
       throw new this.platform.api.hap.HapStatusError(HAPStatus.SERVICE_COMMUNICATION_FAILURE);
@@ -146,11 +155,14 @@ export class PPAccessory {
   private async setAwayMode(value: CharacteristicValue): Promise<void> {
     const device = this.accessory.context.device;
     try {
+      const enabled = !!value;
       await this.platform.phynApi.setDevicePreferences(device.device_id, [{
         device_id: device.device_id,
         name: 'leak_sensitivity_away_mode',
-        value: value ? 'true' : 'false',
+        value: enabled ? 'true' : 'false',
       }]);
+      this.awayModeEnabled = enabled;
+      this.lastSettingsRefreshTs = Date.now();
     } catch (err) {
       this.platform.log.error(`Failed to set away mode: ${(err as Error).message}`);
       throw new this.platform.api.hap.HapStatusError(HAPStatus.SERVICE_COMMUNICATION_FAILURE);
@@ -159,9 +171,10 @@ export class PPAccessory {
 
   private async getAutoShutoff(): Promise<CharacteristicValue> {
     try {
-      const device = this.accessory.context.device;
-      const result = await this.platform.phynApi.getAutoShutoff(device.device_id);
-      return result.auto_shutoff_enable;
+      if (this.autoShutoffEnabled === null) {
+        await this.refreshCachedSettings(true);
+      }
+      return this.autoShutoffEnabled ?? false;
     } catch (err) {
       this.platform.log.error(`Failed to get auto shutoff: ${(err as Error).message}`);
       throw new this.platform.api.hap.HapStatusError(HAPStatus.SERVICE_COMMUNICATION_FAILURE);
@@ -171,7 +184,10 @@ export class PPAccessory {
   private async setAutoShutoff(value: CharacteristicValue): Promise<void> {
     const device = this.accessory.context.device;
     try {
-      await this.platform.phynApi.setAutoShutoffEnabled(device.device_id, value as boolean);
+      const enabled = !!value;
+      await this.platform.phynApi.setAutoShutoffEnabled(device.device_id, enabled);
+      this.autoShutoffEnabled = enabled;
+      this.lastSettingsRefreshTs = Date.now();
     } catch (err) {
       this.platform.log.error(`Failed to set auto shutoff: ${(err as Error).message}`);
       throw new this.platform.api.hap.HapStatusError(HAPStatus.SERVICE_COMMUNICATION_FAILURE);
@@ -196,6 +212,9 @@ export class PPAccessory {
       }
 
       this.pollCycle++;
+      if (this.shouldRefreshSettings()) {
+        this.refreshCachedSettings();
+      }
       this.updateFromState(state);
     } catch (err) {
       this.platform.log.warn(`Polling failed for ${device.device_id}: ${(err as Error).message}`);
@@ -213,6 +232,39 @@ export class PPAccessory {
     if (this.mqttHandler) {
       this.platform.mqttClient.removeListener('message', this.mqttHandler);
       this.mqttHandler = null;
+    }
+  }
+
+  private shouldRefreshSettings(): boolean {
+    if (this.awayModeEnabled === null || this.autoShutoffEnabled === null) {
+      return true;
+    }
+    return Date.now() - this.lastSettingsRefreshTs >= SETTINGS_REFRESH_INTERVAL_MS;
+  }
+
+  private async refreshCachedSettings(force = false): Promise<void> {
+    if (this.refreshingSettings) {
+      return;
+    }
+    if (!force && !this.shouldRefreshSettings()) {
+      return;
+    }
+
+    this.refreshingSettings = true;
+    const device = this.accessory.context.device;
+    try {
+      const [prefs, autoShutoff] = await Promise.all([
+        this.platform.phynApi.getDevicePreferences(device.device_id),
+        this.platform.phynApi.getAutoShutoff(device.device_id),
+      ]);
+      const awayPref = prefs.find(p => p.name === 'leak_sensitivity_away_mode');
+      this.awayModeEnabled = awayPref?.value === 'true';
+      this.autoShutoffEnabled = !!autoShutoff.auto_shutoff_enable;
+      this.lastSettingsRefreshTs = Date.now();
+    } catch (err) {
+      this.platform.log.warn(`Failed to refresh cached PP settings for ${device.device_id}: ${(err as Error).message}`);
+    } finally {
+      this.refreshingSettings = false;
     }
   }
 

@@ -35,7 +35,7 @@
       "pollingInterval": {
         "title": "Polling Interval",
         "type": "integer",
-        "default": 60,
+        "default": 3600,
         "minimum": 10,
         "description": "How often (in seconds) to poll the Phyn API for device state updates"
       }

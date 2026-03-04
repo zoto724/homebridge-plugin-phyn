@@ -230,15 +230,15 @@ describe('Fix #6 — Polling concurrency guard', () => {
   it('PWAccessory: second poll is skipped while first is in-flight', async () => {
     let resolveFirst: (() => void) | undefined;
     const platform = createPWMockPlatform({
-      getDeviceState: vi.fn().mockImplementation(() => new Promise<any>((r) => {
-        resolveFirst = () => r({ device_id: 'dev-pw-001', online_status: { v: 'online' } });
+      getWaterStatistics: vi.fn().mockImplementation(() => new Promise<any>((r) => {
+        resolveFirst = () => r([{ ts: Date.now(), temperature: [{ value: 68 }], humidity: [{ value: 50 }], battery_level: 80 }]);
       })),
     });
     const accessory = createMockAccessory(pwDevice);
     const pw = new PWAccessory(platform as any, accessory as any);
 
     const secondPoll = (pw as any).poll();
-    expect(platform.phynApi.getDeviceState).toHaveBeenCalledTimes(1);
+    expect(platform.phynApi.getWaterStatistics).toHaveBeenCalledTimes(1);
     resolveFirst!();
     await secondPoll;
   });

@@ -1,12 +1,15 @@
 import type { PlatformAccessory } from 'homebridge';
 import type { PhynPlatform } from '../platform.js';
 import { fahrenheitToCelsius } from '../utils.js';
-import { DEFAULT_POLLING_INTERVAL, LOW_BATTERY_THRESHOLD } from '../settings.js';
-import type { PhynDeviceState, PhynWaterStats, PhynMqttPayload } from '../types.js';
+import {
+  DEFAULT_POLLING_INTERVAL,
+  LOW_BATTERY_THRESHOLD,
+  PW_WATER_STATS_WINDOW_MS,
+} from '../settings.js';
+import type { PhynWaterStats, PhynMqttPayload } from '../types.js';
 
 export class PWAccessory {
   private pollingTimer: ReturnType<typeof setInterval> | null = null;
-  private currentState: PhynDeviceState | null = null;
   private currentStats: PhynWaterStats | null = null;
   private polling: boolean = false;
   private mqttHandler: ((deviceId: string, payload: PhynMqttPayload) => void) | null = null;
@@ -118,18 +121,15 @@ export class PWAccessory {
     const device = this.accessory.context.device;
     try {
       const toTs = Date.now();
-      const fromTs = toTs - (3600 * 72 * 1000); // 72 hours back
-      const [state, statsArray] = await Promise.all([
-        this.platform.phynApi.getDeviceState(device.device_id),
-        this.platform.phynApi.getWaterStatistics(device.device_id, fromTs, toTs),
-      ]);
+      const fromTs = toTs - PW_WATER_STATS_WINDOW_MS;
+      const statsArray = await this.platform.phynApi.getWaterStatistics(device.device_id, fromTs, toTs);
       // Pick the most recent entry
       const stats = statsArray.reduce((latest, entry) =>
         (entry.ts ?? 0) > (latest.ts ?? 0) ? entry : latest,
         statsArray[0] ?? null,
       );
       if (stats) {
-        this.updateFromState(state, stats);
+        this.updateFromState(stats);
       }
     } catch (err) {
       this.platform.log.warn(`Polling failed for ${device.device_id}: ${(err as Error).message}`);
@@ -150,9 +150,9 @@ export class PWAccessory {
     }
   }
 
-  updateFromState(state: PhynDeviceState, stats: PhynWaterStats): void {
+  updateFromState(stateOrStats: unknown, maybeStats?: PhynWaterStats): void {
     const { Service, Characteristic } = this.platform;
-    this.currentState = state;
+    const stats = (maybeStats ?? stateOrStats) as PhynWaterStats;
     this.currentStats = stats;
 
     // LeakSensor — water_detected is in alerts

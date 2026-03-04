@@ -9,7 +9,7 @@ export const API_KEY_PHYN = 'E7nfOgW6VI64fYpifiZSr6Me5w1Upe155zbu4lq8';
 export const API_KEY_KOHLER = 'OOLFiYu7Ts5RKI4BV6WeI3zb38HU76vZ8x5lFX6Y';
 
 export const MQTT_TOPIC_PREFIX = 'prd/app_subscriptions';
-export const DEFAULT_POLLING_INTERVAL = 60;
+export const DEFAULT_POLLING_INTERVAL = 3600;
 export const FIRMWARE_POLL_EVERY_N_CYCLES = 60;
 export const AUTH_RETRY_ATTEMPTS = 3;
 export const AUTH_RETRY_DELAY_MS = 5000;
@@ -20,3 +20,6 @@ export const TOKEN_REFRESH_BUFFER_SECS = 60;
 export const LOW_BATTERY_THRESHOLD = 20;
 export const API_REQUEST_TIMEOUT_MS = 30000;
 export const MQTT_RECOVERY_INTERVAL_MS = 300000; // 5 minutes
+export const DEVICE_DISCOVERY_INTERVAL_MS = 24 * 60 * 60 * 1000; // 24 hours
+export const SETTINGS_REFRESH_INTERVAL_MS = 24 * 60 * 60 * 1000; // 24 hours
+export const PW_WATER_STATS_WINDOW_MS = 3 * 60 * 60 * 1000; // 3 hours
