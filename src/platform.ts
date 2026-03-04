@@ -31,7 +31,11 @@ export class PhynPlatform implements DynamicPlatformPlugin {
     this.Service = api.hap.Service;
     this.Characteristic = api.hap.Characteristic;
     this.phynApi = new PhynApi(log, config);
-    this.mqttClient = new MqttClient(log);
+    const userId = config['username'] as string;
+    this.mqttClient = new MqttClient(log, async () => {
+      const policy = await this.phynApi.getIotPolicy(userId);
+      return policy.wss_url;
+    });
 
     this.api.on('didFinishLaunching', () => {
       this.discoverDevices();
@@ -125,6 +129,9 @@ export class PhynPlatform implements DynamicPlatformPlugin {
         const userId = this.config['username'] as string;
         const iotPolicy = await this.phynApi.getIotPolicy(userId);
         await this.mqttClient.connect(iotPolicy.wss_url);
+        this.mqttClient.once('reconnect_failed', () => {
+          this.log.warn('MQTT reconnect exhausted all attempts. Real-time updates disabled until next restart.');
+        });
       } catch (err) {
         this.log.warn(`Failed to connect MQTT (real-time updates disabled): ${(err as Error).message}`);
       }

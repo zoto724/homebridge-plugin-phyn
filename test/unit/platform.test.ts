@@ -92,7 +92,7 @@ describe('PhynPlatform', () => {
       const platform = new PhynPlatform(log as any, config as any, api as any);
 
       expect(PhynApi).toHaveBeenCalledWith(log, config);
-      expect(MqttClient).toHaveBeenCalledWith(log);
+      expect(MqttClient).toHaveBeenCalledWith(log, expect.any(Function));
       expect(platform.phynApi).toBeDefined();
       expect(platform.mqttClient).toBeDefined();
     });
