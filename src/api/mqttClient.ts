@@ -16,6 +16,8 @@ export class MqttClient extends EventEmitter {
   private reconnectAttempts: number = 0;
   private wsUrl: string = '';
   private clientGeneration: number = 0;
+  private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
+  private reconnecting: boolean = false;
 
   constructor(
     private readonly log: Logging,
@@ -25,9 +27,22 @@ export class MqttClient extends EventEmitter {
   }
 
   async connect(wsUrl: string): Promise<void> {
+    // Cancel any pending reconnect timer — a fresh connect supersedes it
+    this.clearReconnectTimer();
+    this.reconnecting = false;
+
+    // Close previous client if one exists to avoid memory leaks
+    if (this.client) {
+      try {
+        this.client.end();
+      } catch { /* best-effort */ }
+    }
+
     this.wsUrl = wsUrl;
     const generation = ++this.clientGeneration;
-    this.client = mqtt.connect(wsUrl, { protocol: 'wss' });
+    // Disable mqtt.js built-in auto-reconnect to prevent connect storms;
+    // we manage reconnection ourselves via scheduleReconnect().
+    this.client = mqtt.connect(wsUrl, { protocol: 'wss', reconnectPeriod: 0 });
 
     this.client.on('message', (topic: string, message: Buffer) => {
       this.onMessage(topic, message);
@@ -40,13 +55,16 @@ export class MqttClient extends EventEmitter {
     this.client.on('close', () => {
       // Ignore close events from superseded client instances
       if (generation !== this.clientGeneration) return;
+      // Ignore if a reconnect is already scheduled/in-flight
+      if (this.reconnecting) return;
       this.log.warn('MQTT connection closed, scheduling reconnect');
-      this.scheduleReconnect(this.wsUrl);
+      this.scheduleReconnect();
     });
 
     this.client.on('connect', () => {
       this.log.info('MQTT connected');
       this.reconnectAttempts = 0;
+      this.reconnecting = false;
     });
   }
 
@@ -63,10 +81,20 @@ export class MqttClient extends EventEmitter {
   }
 
   disconnect(): void {
+    this.clearReconnectTimer();
+    this.reconnecting = false;
     if (this.client) {
       this.client.end();
       this.client = null;
     }
+  }
+
+  /** Reset attempt counter and try connecting again with a fresh URL. */
+  async reconnectFromScratch(): Promise<void> {
+    this.clearReconnectTimer();
+    this.reconnectAttempts = 0;
+    this.reconnecting = false;
+    this.scheduleReconnect();
   }
 
   private onMessage(topic: string, message: Buffer): void {
@@ -82,12 +110,17 @@ export class MqttClient extends EventEmitter {
     }
   }
 
-  private scheduleReconnect(wsUrl: string): void {
-    if (this.reconnectAttempts >= MQTT_RECONNECT_MAX_ATTEMPTS) {
-      this.log.error(`MQTT reconnect failed after ${MQTT_RECONNECT_MAX_ATTEMPTS} attempts`);
-      this.emit('reconnect_failed');
-      return;
+  private clearReconnectTimer(): void {
+    if (this.reconnectTimer !== null) {
+      clearTimeout(this.reconnectTimer);
+      this.reconnectTimer = null;
     }
+  }
+
+  private scheduleReconnect(): void {
+    // Prevent overlapping reconnect chains
+    this.clearReconnectTimer();
+    this.reconnecting = true;
 
     const delay = mqttBackoffDelay(this.reconnectAttempts, MQTT_RECONNECT_BASE_MS, MQTT_RECONNECT_MAX_MS);
     const attempt = ++this.reconnectAttempts;
@@ -95,17 +128,17 @@ export class MqttClient extends EventEmitter {
     this.log.info(`MQTT reconnecting in ${delay}ms (attempt ${attempt})`);
 
     if (this.reconnectAttempts >= MQTT_RECONNECT_MAX_ATTEMPTS) {
-      // This was the last allowed attempt — emit failure after the delay
-      setTimeout(() => {
-        this.log.error(`MQTT reconnect failed after ${MQTT_RECONNECT_MAX_ATTEMPTS} attempts`);
-        this.emit('reconnect_failed');
-      }, delay);
+      this.log.error(`MQTT reconnect failed after ${MQTT_RECONNECT_MAX_ATTEMPTS} attempts`);
+      this.reconnecting = false;
+      this.emit('reconnect_failed');
       return;
     }
 
-    setTimeout(async () => {
+    this.reconnectTimer = setTimeout(async () => {
+      this.reconnectTimer = null;
       try {
-        const urlToUse = this.getFreshUrl ? await this.getFreshUrl() : wsUrl;
+        // Always fetch a fresh presigned URL when possible; fall back to cached URL
+        const urlToUse = this.getFreshUrl ? await this.getFreshUrl() : this.wsUrl;
         await this.connect(urlToUse);
         // Re-subscribe to all topics
         for (const topic of this.subscriptions) {
@@ -120,7 +153,7 @@ export class MqttClient extends EventEmitter {
         }
       } catch (err) {
         this.log.error(`MQTT reconnect error: ${(err as Error).message}`);
-        this.scheduleReconnect(wsUrl);
+        this.scheduleReconnect();
       }
     }, delay);
   }

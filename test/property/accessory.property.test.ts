@@ -685,6 +685,7 @@ function createMockPlatformPC(apiOverrides: any = {}) {
     Service,
     Characteristic,
     phynApi,
+    mqttClient: { on: vi.fn(), subscribe: vi.fn(), removeListener: vi.fn() },
     log: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
     config: { pollingInterval: 60 },
   };
@@ -903,6 +904,7 @@ function createMockPlatformPW(apiOverrides: any = {}) {
     Service,
     Characteristic,
     phynApi,
+    mqttClient: { on: vi.fn(), subscribe: vi.fn(), removeListener: vi.fn() },
     log: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
     config: { pollingInterval: 60 },
   };

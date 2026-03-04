@@ -18,3 +18,5 @@ export const MQTT_RECONNECT_MAX_MS = 60000;
 export const MQTT_RECONNECT_MAX_ATTEMPTS = 20;
 export const TOKEN_REFRESH_BUFFER_SECS = 60;
 export const LOW_BATTERY_THRESHOLD = 20;
+export const API_REQUEST_TIMEOUT_MS = 30000;
+export const MQTT_RECOVERY_INTERVAL_MS = 300000; // 5 minutes

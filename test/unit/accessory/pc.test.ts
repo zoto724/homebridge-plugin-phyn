@@ -84,10 +84,17 @@ function createMockPlatform(apiOverrides: any = {}) {
     ...apiOverrides,
   };
 
+  const mqttClient: any = {
+    on: vi.fn(),
+    subscribe: vi.fn(),
+    removeListener: vi.fn(),
+  };
+
   return {
     Service,
     Characteristic,
     phynApi,
+    mqttClient,
     log: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
     config: { pollingInterval: 60 },
   };

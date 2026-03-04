@@ -15,7 +15,9 @@ import {
   AUTH_RETRY_ATTEMPTS,
   AUTH_RETRY_DELAY_MS,
   TOKEN_REFRESH_BUFFER_SECS,
+  API_REQUEST_TIMEOUT_MS,
 } from '../settings.js';
+import { authRetryDelay } from '../utils.js';
 import type {
   PhynHome,
   PhynDeviceState,
@@ -92,7 +94,8 @@ export class PhynApi {
         lastError = new NetworkError(`Network error during authentication: ${error.message}`);
         this.log.warn(`Authentication attempt ${attempt + 1} failed: ${error.message}`);
         if (attempt < AUTH_RETRY_ATTEMPTS - 1) {
-          await new Promise((resolve) => setTimeout(resolve, AUTH_RETRY_DELAY_MS));
+          const delay = authRetryDelay(attempt, AUTH_RETRY_DELAY_MS);
+          await new Promise((resolve) => setTimeout(resolve, delay));
         }
       }
     }
@@ -105,23 +108,28 @@ export class PhynApi {
     const remaining = this.tokenExpiresAt - Date.now() / 1000;
     if (remaining >= TOKEN_REFRESH_BUFFER_SECS) return;
 
-    await new Promise<void>((resolve, reject) => {
-      const session = this.cognitoUser!.getSignInUserSession();
-      if (!session) {
-        reject(new AuthError('No active session to refresh'));
-        return;
-      }
-      this.cognitoUser!.refreshSession(session.getRefreshToken(), (err, newSession: CognitoUserSession) => {
-        if (err) {
-          reject(new AuthError(`Token refresh failed: ${err.message}`));
+    try {
+      await new Promise<void>((resolve, reject) => {
+        const session = this.cognitoUser!.getSignInUserSession();
+        if (!session) {
+          reject(new AuthError('No active session to refresh'));
           return;
         }
-        this.accessToken = newSession.getAccessToken().getJwtToken();
-        this.idToken = newSession.getIdToken().getJwtToken();
-        this.tokenExpiresAt = newSession.getAccessToken().getExpiration();
-        resolve();
+        this.cognitoUser!.refreshSession(session.getRefreshToken(), (err, newSession: CognitoUserSession) => {
+          if (err) {
+            reject(new AuthError(`Token refresh failed: ${err.message}`));
+            return;
+          }
+          this.accessToken = newSession.getAccessToken().getJwtToken();
+          this.idToken = newSession.getIdToken().getJwtToken();
+          this.tokenExpiresAt = newSession.getAccessToken().getExpiration();
+          resolve();
+        });
       });
-    });
+    } catch (err) {
+      this.log.warn(`Token refresh failed, attempting full re-authentication: ${(err as Error).message}`);
+      await this.authenticate();
+    }
   }
 
   private apiKey(): string {
@@ -130,13 +138,17 @@ export class PhynApi {
 
   private async request<T>(method: string, path: string, body?: unknown, params?: Record<string, unknown>, useIdToken = false): Promise<T> {
     await this.refreshTokenIfNeeded();
+    const token = useIdToken ? this.idToken : this.accessToken;
+    if (!token) {
+      throw new AuthError('No valid authentication token available. Call authenticate() first.');
+    }
     const response = await axios.request<T>({
       method,
       url: `${PHYN_API_BASE}${path}`,
       headers: {
         // aiophyn sends the token directly without "Bearer" prefix
         // most endpoints use the access token; iot_policy requires the id token
-        Authorization: useIdToken ? this.idToken : this.accessToken,
+        Authorization: token,
         'x-api-key': this.apiKey(),
         'Content-Type': 'application/json',
         'User-Agent': 'phyn/18 CFNetwork/1331.0.7 Darwin/21.4.0',
@@ -144,6 +156,7 @@ export class PhynApi {
       },
       data: body,
       params,
+      timeout: API_REQUEST_TIMEOUT_MS,
     });
     return response.data;
   }

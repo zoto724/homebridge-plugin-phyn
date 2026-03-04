@@ -17,3 +17,11 @@ export function detectDeviceType(productCode: string): DeviceType {
 export function mqttBackoffDelay(attempt: number, baseMs: number, maxMs: number): number {
   return Math.min(baseMs * Math.pow(2, attempt), maxMs);
 }
+
+// Exponential backoff with jitter for auth retries
+// delay = baseMs * 2^attempt + random(0, baseMs)
+export function authRetryDelay(attempt: number, baseMs: number): number {
+  const exponential = baseMs * Math.pow(2, attempt);
+  const jitter = Math.floor(Math.random() * baseMs);
+  return exponential + jitter;
+}

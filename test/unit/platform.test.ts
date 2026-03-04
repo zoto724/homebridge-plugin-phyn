@@ -24,12 +24,34 @@ vi.mock('../../src/api/phynApi.js', () => ({
   },
 }));
 
-// Mock MqttClient
+// Mock MqttClient with event emitter support
 const mockMqttConnect = vi.fn();
+const mockMqttReconnectFromScratch = vi.fn();
+const mqttListeners: Record<string, Array<(...args: any[]) => void>> = {};
+
+function resetMqttListeners() {
+  for (const key of Object.keys(mqttListeners)) {
+    delete mqttListeners[key];
+  }
+}
+
 vi.mock('../../src/api/mqttClient.js', () => ({
   MqttClient: vi.fn().mockImplementation(() => ({
     connect: mockMqttConnect,
     subscribe: vi.fn(),
+    reconnectFromScratch: mockMqttReconnectFromScratch,
+    on: vi.fn((event: string, cb: (...args: any[]) => void) => {
+      if (!mqttListeners[event]) mqttListeners[event] = [];
+      mqttListeners[event].push(cb);
+    }),
+    once: vi.fn((event: string, cb: (...args: any[]) => void) => {
+      if (!mqttListeners[event]) mqttListeners[event] = [];
+      mqttListeners[event].push(cb);
+    }),
+    emit: vi.fn((event: string, ...args: any[]) => {
+      const cbs = mqttListeners[event] ?? [];
+      for (const cb of cbs) cb(...args);
+    }),
   })),
 }));
 
@@ -62,6 +84,7 @@ function createMockLog() {
 describe('PhynPlatform', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    resetMqttListeners();
     mockAuthenticate.mockResolvedValue(undefined);
     mockGetHomes.mockResolvedValue([]);
     mockGetIotPolicy.mockResolvedValue({ wss_url: 'wss://test.example.com', user_id: 'user1' });
@@ -463,6 +486,101 @@ describe('PhynPlatform', () => {
         expect.any(String),
         [staleAccessory],
       );
+    });
+  });
+
+  describe('Fix #4 — MQTT reconnect recovery', () => {
+    it('registers a reconnect_failed listener that schedules recovery', async () => {
+      vi.useFakeTimers();
+      const { PhynPlatform } = await import('../../src/platform.js');
+
+      vi.clearAllMocks();
+      resetMqttListeners();
+      mockAuthenticate.mockResolvedValue(undefined);
+      mockGetHomes.mockResolvedValue([]);
+      mockGetIotPolicy.mockResolvedValue({ wss_url: 'wss://test', user_id: 'user1' });
+      mockMqttConnect.mockResolvedValue(undefined);
+
+      const log = createMockLog();
+      const api = createMockApi();
+      const config = { platform: 'PhynPlatform', name: 'Phyn', username: 'u', password: 'p' };
+      const platform = new PhynPlatform(log as any, config as any, api as any);
+
+      await platform.discoverDevices();
+
+      // Verify the reconnect_failed listener was registered
+      expect(mqttListeners['reconnect_failed']).toBeDefined();
+      expect(mqttListeners['reconnect_failed'].length).toBeGreaterThanOrEqual(1);
+
+      // Fire reconnect_failed
+      for (const cb of mqttListeners['reconnect_failed']) cb();
+
+      expect(log.warn).toHaveBeenCalledWith(expect.stringContaining('Will retry in'));
+
+      // Advance time by the recovery interval (5 minutes)
+      await vi.advanceTimersByTimeAsync(300_000);
+
+      expect(mockMqttReconnectFromScratch).toHaveBeenCalledTimes(1);
+      expect(log.info).toHaveBeenCalledWith(expect.stringContaining('Attempting MQTT recovery'));
+
+      vi.useRealTimers();
+    });
+
+    it('does not call reconnectFromScratch before the recovery interval', async () => {
+      vi.useFakeTimers();
+      const { PhynPlatform } = await import('../../src/platform.js');
+
+      vi.clearAllMocks();
+      resetMqttListeners();
+      mockAuthenticate.mockResolvedValue(undefined);
+      mockGetHomes.mockResolvedValue([]);
+      mockGetIotPolicy.mockResolvedValue({ wss_url: 'wss://test', user_id: 'user1' });
+      mockMqttConnect.mockResolvedValue(undefined);
+
+      const log = createMockLog();
+      const api = createMockApi();
+      const config = { platform: 'PhynPlatform', name: 'Phyn', username: 'u', password: 'p' };
+      const platform = new PhynPlatform(log as any, config as any, api as any);
+
+      await platform.discoverDevices();
+
+      // Fire reconnect_failed
+      for (const cb of mqttListeners['reconnect_failed'] ?? []) cb();
+
+      // Advance only 1 minute — recovery should NOT have fired yet
+      await vi.advanceTimersByTimeAsync(60_000);
+      expect(mockMqttReconnectFromScratch).not.toHaveBeenCalled();
+
+      vi.useRealTimers();
+    });
+
+    it('coalesces repeated reconnect_failed events into a single recovery timer', async () => {
+      vi.useFakeTimers();
+      const { PhynPlatform } = await import('../../src/platform.js');
+
+      vi.clearAllMocks();
+      resetMqttListeners();
+      mockAuthenticate.mockResolvedValue(undefined);
+      mockGetHomes.mockResolvedValue([]);
+      mockGetIotPolicy.mockResolvedValue({ wss_url: 'wss://test', user_id: 'user1' });
+      mockMqttConnect.mockResolvedValue(undefined);
+
+      const log = createMockLog();
+      const api = createMockApi();
+      const config = { platform: 'PhynPlatform', name: 'Phyn', username: 'u', password: 'p' };
+      const platform = new PhynPlatform(log as any, config as any, api as any);
+
+      await platform.discoverDevices();
+
+      for (const cb of mqttListeners['reconnect_failed'] ?? []) cb();
+      for (const cb of mqttListeners['reconnect_failed'] ?? []) cb();
+      for (const cb of mqttListeners['reconnect_failed'] ?? []) cb();
+
+      await vi.advanceTimersByTimeAsync(300_000);
+
+      expect(mockMqttReconnectFromScratch).toHaveBeenCalledTimes(1);
+
+      vi.useRealTimers();
     });
   });
 });

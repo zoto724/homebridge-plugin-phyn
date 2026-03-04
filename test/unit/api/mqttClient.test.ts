@@ -35,7 +35,7 @@ describe('MqttClient', () => {
     it('calls mqtt.connect with the provided wsUrl and wss protocol', async () => {
       const mqtt = (await import('mqtt')).default;
       await client.connect('wss://example.com/mqtt');
-      expect(mqtt.connect).toHaveBeenCalledWith('wss://example.com/mqtt', { protocol: 'wss' });
+      expect(mqtt.connect).toHaveBeenCalledWith('wss://example.com/mqtt', { protocol: 'wss', reconnectPeriod: 0 });
     });
 
     it('wires message, error, close, and connect event handlers', async () => {

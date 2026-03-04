@@ -8,6 +8,8 @@ export class PPAccessory {
   private pollingTimer: ReturnType<typeof setInterval> | null = null;
   private pollCycle: number = 0;
   private currentState: PhynDeviceState | null = null;
+  private polling: boolean = false;
+  private mqttHandler: ((deviceId: string, payload: PhynMqttPayload) => void) | null = null;
 
   constructor(
     private readonly platform: PhynPlatform,
@@ -65,11 +67,12 @@ export class PPAccessory {
       .onSet((value) => this.setAutoShutoff(value));
 
     // Register MQTT listener
-    this.platform.mqttClient.on('message', (deviceId: string, payload: PhynMqttPayload) => {
+    this.mqttHandler = (deviceId: string, payload: PhynMqttPayload) => {
       if (deviceId === device.device_id) {
         this.updateFromMqtt(payload);
       }
-    });
+    };
+    this.platform.mqttClient.on('message', this.mqttHandler);
 
     // Subscribe to MQTT topic
     this.platform.mqttClient.subscribe(device.device_id);
@@ -176,14 +179,11 @@ export class PPAccessory {
   }
 
   private async poll(): Promise<void> {
+    if (this.polling) return; // guard against overlapping polls
+    this.polling = true;
     const device = this.accessory.context.device;
     try {
       const state = await this.platform.phynApi.getDeviceState(device.device_id);
-
-      // Consumption requires a date duration string
-      const today = new Date();
-      const duration = `${today.getFullYear()}/${String(today.getMonth() + 1).padStart(2, '0')}/${String(today.getDate()).padStart(2, '0')}`;
-      await this.platform.phynApi.getConsumptionDetails(device.device_id, duration);
 
       if (this.pollCycle % FIRMWARE_POLL_EVERY_N_CYCLES === 0) {
         try {
@@ -199,6 +199,20 @@ export class PPAccessory {
       this.updateFromState(state);
     } catch (err) {
       this.platform.log.warn(`Polling failed for ${device.device_id}: ${(err as Error).message}`);
+    } finally {
+      this.polling = false;
+    }
+  }
+
+  /** Clean up timers and MQTT listeners. */
+  destroy(): void {
+    if (this.pollingTimer) {
+      clearInterval(this.pollingTimer);
+      this.pollingTimer = null;
+    }
+    if (this.mqttHandler) {
+      this.platform.mqttClient.removeListener('message', this.mqttHandler);
+      this.mqttHandler = null;
     }
   }
 

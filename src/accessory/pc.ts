@@ -2,10 +2,12 @@ import type { PlatformAccessory } from 'homebridge';
 import type { PhynPlatform } from '../platform.js';
 import { fahrenheitToCelsius } from '../utils.js';
 import { DEFAULT_POLLING_INTERVAL } from '../settings.js';
-import type { PhynDeviceState } from '../types.js';
+import type { PhynDeviceState, PhynMqttPayload } from '../types.js';
 
 export class PCAccessory {
   private pollingTimer: ReturnType<typeof setInterval> | null = null;
+  private polling: boolean = false;
+  private mqttHandler: ((deviceId: string, payload: PhynMqttPayload) => void) | null = null;
 
   constructor(
     private readonly platform: PhynPlatform,
@@ -33,6 +35,17 @@ export class PCAccessory {
     coldTempService.getCharacteristic(Characteristic.CurrentTemperature)
       .onGet(() => this.getColdTemperature());
 
+    // Register MQTT listener
+    this.mqttHandler = (deviceId: string, payload: PhynMqttPayload) => {
+      if (deviceId === device.device_id) {
+        this.updateFromMqtt(payload);
+      }
+    };
+    this.platform.mqttClient.on('message', this.mqttHandler);
+
+    // Subscribe to MQTT topic
+    this.platform.mqttClient.subscribe(device.device_id);
+
     // Start polling
     const interval = (this.platform.config['pollingInterval'] as number ?? DEFAULT_POLLING_INTERVAL) * 1000;
     this.pollingTimer = setInterval(() => this.poll(), interval);
@@ -48,12 +61,28 @@ export class PCAccessory {
   }
 
   private async poll(): Promise<void> {
+    if (this.polling) return; // guard against overlapping polls
+    this.polling = true;
     const device = this.accessory.context.device;
     try {
       const state = await this.platform.phynApi.getDeviceState(device.device_id);
       this.updateFromState(state);
     } catch (err) {
       this.platform.log.warn(`Polling failed for ${device.device_id}: ${(err as Error).message}`);
+    } finally {
+      this.polling = false;
+    }
+  }
+
+  /** Clean up timers and MQTT listeners. */
+  destroy(): void {
+    if (this.pollingTimer) {
+      clearInterval(this.pollingTimer);
+      this.pollingTimer = null;
+    }
+    if (this.mqttHandler) {
+      this.platform.mqttClient.removeListener('message', this.mqttHandler);
+      this.mqttHandler = null;
     }
   }
 
@@ -78,6 +107,21 @@ export class PCAccessory {
 
     // online_status is {v: "online"} shape
     this.setFault(state.online_status?.v !== 'online');
+  }
+
+  updateFromMqtt(payload: PhynMqttPayload): void {
+    const { Characteristic } = this.platform;
+
+    if (payload.sensor_data?.temperature !== undefined) {
+      const hotTempService = this.accessory.getService('Hot Water Temperature');
+      if (hotTempService) {
+        const temp = payload.sensor_data.temperature;
+        hotTempService.updateCharacteristic(
+          Characteristic.CurrentTemperature,
+          fahrenheitToCelsius(temp.v ?? temp.mean ?? 32),
+        );
+      }
+    }
   }
 
   setFault(fault: boolean): void {

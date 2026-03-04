@@ -12,7 +12,7 @@ import { MqttClient } from './api/mqttClient.js';
 import { PPAccessory } from './accessory/pp.js';
 import { PCAccessory } from './accessory/pc.js';
 import { PWAccessory } from './accessory/pw.js';
-import { PLATFORM_NAME, PLUGIN_NAME } from './settings.js';
+import { PLATFORM_NAME, PLUGIN_NAME, MQTT_RECOVERY_INTERVAL_MS } from './settings.js';
 import { detectDeviceType } from './utils.js';
 
 export class PhynPlatform implements DynamicPlatformPlugin {
@@ -22,6 +22,7 @@ export class PhynPlatform implements DynamicPlatformPlugin {
 
   public readonly phynApi: PhynApi;
   public readonly mqttClient: MqttClient;
+  private mqttRecoveryTimer: ReturnType<typeof setTimeout> | null = null;
 
   constructor(
     public readonly log: Logging,
@@ -129,8 +130,19 @@ export class PhynPlatform implements DynamicPlatformPlugin {
         const userId = this.config['username'] as string;
         const iotPolicy = await this.phynApi.getIotPolicy(userId);
         await this.mqttClient.connect(iotPolicy.wss_url);
-        this.mqttClient.once('reconnect_failed', () => {
-          this.log.warn('MQTT reconnect exhausted all attempts. Real-time updates disabled until next restart.');
+        this.mqttClient.on('reconnect_failed', () => {
+          this.log.warn(
+            `MQTT reconnect exhausted all attempts. Will retry in ${MQTT_RECOVERY_INTERVAL_MS / 1000}s.`,
+          );
+          // Cancel any already-scheduled recovery to avoid stacking timers
+          if (this.mqttRecoveryTimer !== null) {
+            clearTimeout(this.mqttRecoveryTimer);
+          }
+          this.mqttRecoveryTimer = setTimeout(() => {
+            this.mqttRecoveryTimer = null;
+            this.log.info('Attempting MQTT recovery after reconnect failure...');
+            this.mqttClient.reconnectFromScratch();
+          }, MQTT_RECOVERY_INTERVAL_MS);
         });
       } catch (err) {
         this.log.warn(`Failed to connect MQTT (real-time updates disabled): ${(err as Error).message}`);

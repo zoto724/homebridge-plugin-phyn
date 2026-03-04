@@ -147,13 +147,8 @@ describe('PhynApi', () => {
   describe('getHomes() not called after auth failure', () => {
     it('getHomes() requires a valid token — throws without prior auth', async () => {
       // Without calling authenticate(), accessToken is null.
-      // refreshTokenIfNeeded() returns early when cognitoUser is null,
-      // so the request proceeds with Authorization: Bearer null.
-      // The axios mock will reject to simulate the server rejecting the null token.
-      const axios = (await import('axios')).default;
-      (axios.request as any).mockRejectedValueOnce(new Error('401 Unauthorized'));
-
-      await expect(api.getHomes()).rejects.toThrow('401 Unauthorized');
+      // The null-guard in request() catches this before sending a request.
+      await expect(api.getHomes()).rejects.toThrow('No valid authentication token available');
     });
 
     it('getHomes() is never called when authenticate() throws AuthError', async () => {
