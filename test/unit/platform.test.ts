@@ -582,6 +582,29 @@ describe('PhynPlatform', () => {
 
       vi.useRealTimers();
     });
+
+    it('registers reconnect_failed listener only once across repeated discoverDevices() calls', async () => {
+      const { PhynPlatform } = await import('../../src/platform.js');
+
+      vi.clearAllMocks();
+      resetMqttListeners();
+      mockAuthenticate.mockResolvedValue(undefined);
+      mockGetHomes.mockResolvedValue([]);
+      mockGetIotPolicy.mockResolvedValue({ wss_url: 'wss://test', user_id: 'user1' });
+      mockMqttConnect.mockResolvedValue(undefined);
+
+      const log = createMockLog();
+      const api = createMockApi();
+      const config = { platform: 'PhynPlatform', name: 'Phyn', username: 'u', password: 'p' };
+      const platform = new PhynPlatform(log as any, config as any, api as any);
+
+      await platform.discoverDevices();
+      await platform.discoverDevices();
+      await platform.discoverDevices();
+
+      expect(mqttListeners['reconnect_failed']).toBeDefined();
+      expect(mqttListeners['reconnect_failed'].length).toBe(1);
+    });
   });
 });
 

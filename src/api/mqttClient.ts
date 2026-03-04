@@ -18,6 +18,7 @@ export class MqttClient extends EventEmitter {
   private clientGeneration: number = 0;
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
   private reconnecting: boolean = false;
+  private shuttingDown: boolean = false;
 
   constructor(
     private readonly log: Logging,
@@ -30,6 +31,9 @@ export class MqttClient extends EventEmitter {
     // Cancel any pending reconnect timer — a fresh connect supersedes it
     this.clearReconnectTimer();
     this.reconnecting = false;
+    this.shuttingDown = false;
+
+    const generation = ++this.clientGeneration;
 
     // Close previous client if one exists to avoid memory leaks
     if (this.client) {
@@ -39,7 +43,6 @@ export class MqttClient extends EventEmitter {
     }
 
     this.wsUrl = wsUrl;
-    const generation = ++this.clientGeneration;
     // Disable mqtt.js built-in auto-reconnect to prevent connect storms;
     // we manage reconnection ourselves via scheduleReconnect().
     this.client = mqtt.connect(wsUrl, { protocol: 'wss', reconnectPeriod: 0 });
@@ -55,6 +58,8 @@ export class MqttClient extends EventEmitter {
     this.client.on('close', () => {
       // Ignore close events from superseded client instances
       if (generation !== this.clientGeneration) return;
+      // Ignore close events caused by explicit shutdown
+      if (this.shuttingDown) return;
       // Ignore if a reconnect is already scheduled/in-flight
       if (this.reconnecting) return;
       this.log.warn('MQTT connection closed, scheduling reconnect');
@@ -83,9 +88,13 @@ export class MqttClient extends EventEmitter {
   disconnect(): void {
     this.clearReconnectTimer();
     this.reconnecting = false;
-    if (this.client) {
-      this.client.end();
-      this.client = null;
+    this.shuttingDown = true;
+    // Invalidate in-flight handlers from current client
+    this.clientGeneration++;
+    const client = this.client;
+    this.client = null;
+    if (client) {
+      client.end();
     }
   }
 
@@ -94,6 +103,7 @@ export class MqttClient extends EventEmitter {
     this.clearReconnectTimer();
     this.reconnectAttempts = 0;
     this.reconnecting = false;
+    this.shuttingDown = false;
     this.scheduleReconnect();
   }
 
@@ -118,6 +128,11 @@ export class MqttClient extends EventEmitter {
   }
 
   private scheduleReconnect(): void {
+    if (this.shuttingDown) {
+      this.reconnecting = false;
+      this.client = null;
+      return;
+    }
     // Prevent overlapping reconnect chains
     this.clearReconnectTimer();
     this.reconnecting = true;

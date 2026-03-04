@@ -324,6 +324,20 @@ describe('Connect storm prevention', () => {
     expect(instances).toHaveLength(1);
   });
 
+  it('disconnect() prevents reconnect when old client emits close', async () => {
+    const mqttClient = new MqttClient(mockLog as any);
+    await mqttClient.connect('wss://test.example.com/mqtt');
+
+    const oldInstance = instances[0];
+    mqttClient.disconnect();
+
+    // Some mqtt implementations emit close after end(); this must not trigger reconnect.
+    oldInstance._emit('close');
+    await flushTimers(5);
+
+    expect(instances).toHaveLength(1);
+  });
+
   it('reconnectFromScratch() cancels any pending reconnect and starts fresh', async () => {
     const callCount = { n: 0 };
     const getFreshUrl = vi.fn().mockImplementation(async () => {
